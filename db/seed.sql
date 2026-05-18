@@ -14,6 +14,9 @@
 \echo 'Seeding scoring rules...'
 \i 'db/seed/scoring_rules.sql'
 
+\echo 'Seeding initial data...'
+\i 'db/seed/initial_data.sql'
+
 \echo 'Seeding sample matches...'
 \i 'db/seed/sample_matches.sql'
 
