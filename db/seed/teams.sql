@@ -2,9 +2,7 @@
 -- Adds helpful columns if they don't exist and inserts team rows.
 
 -- Ensure schema has requested columns (safe to run multiple times)
-alter table teams add column if not exists group_name text;
-alter table teams add column if not exists confederation text;
-alter table teams add column if not exists flag_url text;
+-- Schema now includes `group_name` and `confederation` columns in db/schema.sql
 
 -- Using the tournament UUID from tournaments.sql
 -- Team UUIDs are stable so sample_matches.sql can reference them
@@ -28,7 +26,7 @@ values
   ('d1d1d1d1-0000-0000-0000-000000000013','11111111-1111-1111-1111-111111111111','Brazil','Brazil','BRA','Brazil','CONMEBOL','D', NULL, now()),
   ('d1d1d1d1-0000-0000-0000-000000000014','11111111-1111-1111-1111-111111111111','Portugal','Portugal','POR','Portugal','UEFA','D', NULL, now()),
   ('d1d1d1d1-0000-0000-0000-000000000015','11111111-1111-1111-1111-111111111111','Switzerland','Switzerland','SUI','Switzerland','UEFA','D', NULL, now()),
-  ('d1d1d1d1-0000-0000-0000-000000000016','11111111-1111-1111-1111-111111111111','Japan (D)','Japan','JPN','Japan','AFC','D', NULL, now()),
+  ('d1d1d1d1-0000-0000-0000-000000000016','11111111-1111-1111-1111-111111111111','Placeholder United','Placeholder','PLU','Unknown','UNK','D', NULL, now()),
 
   ('e1e1e1e1-0000-0000-0000-000000000017','11111111-1111-1111-1111-111111111111','Spain','Spain','ESP','Spain','UEFA','E', NULL, now()),
   ('e1e1e1e1-0000-0000-0000-000000000018','11111111-1111-1111-1111-111111111111','England','England','ENG','England','UEFA','E', NULL, now()),

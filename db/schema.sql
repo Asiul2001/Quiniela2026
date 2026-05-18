@@ -77,6 +77,10 @@ create table teams (
   id uuid primary key default gen_random_uuid(),
   tournament_id uuid not null references tournaments(id) on delete cascade,
   name text not null,
+  -- Group name for group stage placement (nullable)
+  group_name text,
+  -- Confederation (e.g., UEFA, CONMEBOL, AFC)
+  confederation text,
   short_name text,
   code text,
   country text,
