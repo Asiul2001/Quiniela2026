@@ -1,4 +1,7 @@
+"use client";
+
 import { Trophy, CalendarDays, Users, Flag, ArrowUpRight, Shield, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
 const upcomingMatches = [
@@ -13,31 +16,79 @@ const leaderboard = [
   { rank: 3, name: "Ana", points: 35, trend: "+3" },
 ];
 
+const themes = [
+  { value: "standard", label: "Standard", borderColor: "rgba(148, 163, 184, 0.25)", textColor: "rgb(226, 232, 240)" },
+  { value: "canada", label: "Canada energy", borderColor: "rgba(248, 113, 113, 0.25)", textColor: "rgb(254, 226, 226)" },
+  { value: "usa", label: "USA lights", borderColor: "rgba(96, 165, 250, 0.25)", textColor: "rgb(219, 234, 254)" },
+  { value: "mexico", label: "Mexico spirit", borderColor: "rgba(74, 222, 128, 0.25)", textColor: "rgb(220, 252, 231)" },
+] as const;
+
+type ThemeName = (typeof themes)[number]["value"];
+
 export default function HomePage() {
+  const [theme, setTheme] = useState<ThemeName>("standard");
+
+  useEffect(() => {
+    const savedTheme = window.localStorage.getItem("selected-theme") as ThemeName | null;
+    if (savedTheme && themes.some((option) => option.value === savedTheme)) {
+      setTheme(savedTheme);
+    }
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem("selected-theme", theme);
+  }, [theme]);
+
   return (
-    <main className="relative min-h-screen overflow-hidden bg-slate-950 text-white">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(239,68,68,0.22),transparent_32%),radial-gradient(circle_at_top_right,rgba(37,99,235,0.22),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(34,197,94,0.18),transparent_30%)]" />
-      <div className="absolute left-1/2 top-0 h-80 w-80 -translate-x-1/2 rounded-full bg-white/5 blur-3xl" />
+    <main
+      className="relative min-h-screen overflow-hidden"
+      style={{ backgroundColor: "var(--color-primary)", color: "var(--color-text)" }}
+    >
+      <div className="absolute inset-0" style={{ backgroundImage: "var(--gradient-primary)" }} />
+      <div
+        className="absolute left-1/2 top-0 h-80 w-80 -translate-x-1/2 rounded-full blur-3xl"
+        style={{ backgroundColor: "rgba(255, 255, 255, 0.05)" }}
+      />
 
       <section className="relative mx-auto flex max-w-7xl flex-col gap-8 px-6 py-8 lg:px-10">
-        <nav className="flex items-center justify-between rounded-3xl border border-white/10 bg-white/[0.04] px-5 py-4 backdrop-blur-xl">
+        <nav
+          className="flex items-center justify-between rounded-3xl px-5 py-4 backdrop-blur-xl"
+          style={{ border: "1px solid var(--color-border-accent)", backgroundColor: "var(--color-bg-card)" }}
+        >
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-red-500 via-blue-500 to-green-500 shadow-lg shadow-blue-950/40">
               <Trophy className="h-5 w-5" />
             </div>
             <div>
               <p className="text-sm font-semibold tracking-wide">Quiniela Platform</p>
-              <p className="text-xs text-slate-400">Private prediction league dashboard</p>
+              <p className="text-xs" style={{ color: "var(--color-text-subtle)" }}>
+                Private prediction league dashboard
+              </p>
             </div>
           </div>
-          <button className="rounded-full border border-white/10 bg-white/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/15">
+          <button
+            className="rounded-full px-4 py-2 text-sm font-medium transition"
+            style={{
+              border: "1px solid var(--color-border-accent)",
+              backgroundColor: "rgba(255, 255, 255, 0.1)",
+              color: "var(--color-text)",
+            }}
+          >
             Manager view
           </button>
         </nav>
 
         <header className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
           <div className="space-y-7">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-sm text-slate-300 backdrop-blur">
+            <div
+              className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm backdrop-blur"
+              style={{
+                border: "1px solid var(--color-border-accent)",
+                backgroundColor: "rgba(255, 255, 255, 0.06)",
+                color: "var(--color-text-subtle)",
+              }}
+            >
               <Sparkles className="h-4 w-4 text-emerald-300" />
               Canada • USA • Mexico 2026 inspired theme
             </div>
@@ -46,23 +97,56 @@ export default function HomePage() {
               <h1 className="max-w-4xl text-5xl font-black tracking-tight text-white md:text-7xl">
                 Familia Strassburger Quiniela
               </h1>
-              <p className="max-w-2xl text-lg leading-8 text-slate-300">
-                A modern family prediction league for the FIFA World Cup 2026, with live rankings, custom scoring, dark horse picks, and match-by-match drama.
+              <p className="max-w-2xl text-lg leading-8" style={{ color: "var(--color-text-subtle)" }}>
+                A modern family prediction league for the FIFA World Cup 2026, with live rankings, custom scoring,
+                dark horse picks, and match-by-match drama.
               </p>
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <div className="rounded-full border border-red-400/25 bg-red-500/10 px-4 py-2 text-sm font-medium text-red-100">🇨🇦 Canada energy</div>
-              <div className="rounded-full border border-blue-400/25 bg-blue-500/10 px-4 py-2 text-sm font-medium text-blue-100">🇺🇸 USA lights</div>
-              <div className="rounded-full border border-green-400/25 bg-green-500/10 px-4 py-2 text-sm font-medium text-green-100">🇲🇽 Mexico spirit</div>
+              {themes.map((option) => {
+                const isActive = option.value === theme;
+
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setTheme(option.value)}
+                    className="rounded-full px-4 py-2 text-sm font-medium transition duration-200"
+                    style={{
+                      border: isActive ? "1px solid var(--color-accent)" : `1px solid ${option.borderColor}`,
+                      backgroundColor: isActive
+                        ? "color-mix(in srgb, var(--color-accent) 20%, rgba(255, 255, 255, 0.06))"
+                        : "rgba(255, 255, 255, 0.06)",
+                      color: isActive ? "var(--color-text)" : option.textColor,
+                      boxShadow: isActive
+                        ? "0 0 0 1px color-mix(in srgb, var(--color-accent) 32%, transparent), 0 12px 30px rgba(15, 23, 42, 0.18)"
+                        : "none",
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          <div className="rounded-[2rem] border border-white/10 bg-white/[0.06] p-5 shadow-2xl shadow-black/30 backdrop-blur-xl">
-            <div className="rounded-[1.5rem] border border-white/10 bg-slate-950/70 p-5">
+          <div
+            className="rounded-[2rem] p-5 shadow-2xl shadow-black/30 backdrop-blur-xl"
+            style={{ border: "1px solid var(--color-border-accent)", backgroundColor: "rgba(255, 255, 255, 0.06)" }}
+          >
+            <div
+              className="rounded-[1.5rem] p-5"
+              style={{
+                border: "1px solid var(--color-border-accent)",
+                backgroundColor: "color-mix(in srgb, var(--color-primary) 78%, transparent)",
+              }}
+            >
               <div className="mb-5 flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-sm text-slate-400">Active tournament</p>
+                  <p className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
+                    Active tournament
+                  </p>
                   <h2 className="text-2xl font-bold">FIFA World Cup 2026</h2>
                 </div>
                 <Flag className="h-6 w-6 text-emerald-300" />
@@ -74,9 +158,18 @@ export default function HomePage() {
                 <StatCard icon={<CalendarDays className="h-4 w-4" />} label="Matches" value="5" />
               </div>
 
-              <div className="mt-5 rounded-2xl border border-white/10 bg-gradient-to-r from-red-500/10 via-blue-500/10 to-green-500/10 p-4">
+              <div
+                className="mt-5 rounded-2xl p-4"
+                style={{
+                  border: "1px solid var(--color-border-accent)",
+                  backgroundImage:
+                    "linear-gradient(90deg, color-mix(in srgb, var(--color-accent-secondary) 14%, transparent), color-mix(in srgb, var(--color-accent) 16%, transparent), color-mix(in srgb, white 10%, transparent))",
+                }}
+              >
                 <p className="text-sm font-medium text-white">Prediction phase</p>
-                <p className="mt-1 text-sm text-slate-300">Group stage predictions open until kickoff locks each match.</p>
+                <p className="mt-1 text-sm" style={{ color: "var(--color-text-subtle)" }}>
+                  Group stage predictions open until kickoff locks each match.
+                </p>
               </div>
             </div>
           </div>
@@ -86,12 +179,23 @@ export default function HomePage() {
           <Card title="Leaderboard" action="View full table">
             <div className="space-y-3">
               {leaderboard.map((player) => (
-                <div key={player.name} className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                <div
+                  key={player.name}
+                  className="flex items-center justify-between rounded-2xl p-4"
+                  style={{ border: "1px solid var(--color-border-accent)", backgroundColor: "var(--color-bg-card)" }}
+                >
                   <div className="flex items-center gap-4">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-sm font-bold">#{player.rank}</div>
+                    <div
+                      className="flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold"
+                      style={{ backgroundColor: "rgba(255, 255, 255, 0.1)" }}
+                    >
+                      #{player.rank}
+                    </div>
                     <div>
                       <p className="font-semibold">{player.name}</p>
-                      <p className="text-xs text-slate-400">Familia Strassburger</p>
+                      <p className="text-xs" style={{ color: "var(--color-text-subtle)" }}>
+                        Familia Strassburger
+                      </p>
                     </div>
                   </div>
                   <div className="text-right">
@@ -106,14 +210,32 @@ export default function HomePage() {
           <Card title="Upcoming matches" action="Enter predictions">
             <div className="space-y-3">
               {upcomingMatches.map((match) => (
-                <div key={`${match.home}-${match.away}`} className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
-                  <div className="mb-3 flex items-center justify-between text-xs text-slate-400">
+                <div
+                  key={`${match.home}-${match.away}`}
+                  className="rounded-2xl p-4"
+                  style={{
+                    border: "1px solid var(--color-border-accent)",
+                    backgroundColor: "color-mix(in srgb, var(--color-secondary) 72%, transparent)",
+                  }}
+                >
+                  <div className="mb-3 flex items-center justify-between text-xs" style={{ color: "var(--color-text-subtle)" }}>
                     <span>{match.stage}</span>
-                    <span>{match.date} • {match.time}</span>
+                    <span>
+                      {match.date} • {match.time}
+                    </span>
                   </div>
                   <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4">
                     <TeamName name={match.home} align="right" />
-                    <div className="rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs font-bold text-slate-300">VS</div>
+                    <div
+                      className="rounded-full px-3 py-1 text-xs font-bold"
+                      style={{
+                        border: "1px solid var(--color-border-accent)",
+                        backgroundColor: "rgba(255, 255, 255, 0.1)",
+                        color: "var(--color-text-subtle)",
+                      }}
+                    >
+                      VS
+                    </div>
                     <TeamName name={match.away} align="left" />
                   </div>
                 </div>
@@ -128,20 +250,27 @@ export default function HomePage() {
 
 function StatCard({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-      <div className="mb-3 text-slate-400">{icon}</div>
+    <div className="rounded-2xl p-4" style={{ border: "1px solid var(--color-border-accent)", backgroundColor: "var(--color-bg-card)" }}>
+      <div className="mb-3" style={{ color: "var(--color-text-subtle)" }}>
+        {icon}
+      </div>
       <p className="text-2xl font-bold">{value}</p>
-      <p className="text-xs text-slate-400">{label}</p>
+      <p className="text-xs" style={{ color: "var(--color-text-subtle)" }}>
+        {label}
+      </p>
     </div>
   );
 }
 
 function Card({ title, action, children }: { title: string; action: string; children: ReactNode }) {
   return (
-    <div className="rounded-[2rem] border border-white/10 bg-white/[0.05] p-5 shadow-xl shadow-black/20 backdrop-blur-xl">
+    <div
+      className="rounded-[2rem] p-5 shadow-xl shadow-black/20 backdrop-blur-xl"
+      style={{ border: "1px solid var(--color-border-accent)", backgroundColor: "rgba(255, 255, 255, 0.05)" }}
+    >
       <div className="mb-5 flex items-center justify-between">
         <h3 className="text-xl font-bold">{title}</h3>
-        <button className="flex items-center gap-1 text-sm font-medium text-slate-300 hover:text-white">
+        <button className="flex items-center gap-1 text-sm font-medium" style={{ color: "var(--color-text-subtle)" }}>
           {action}
           <ArrowUpRight className="h-4 w-4" />
         </button>
@@ -155,8 +284,9 @@ function TeamName({ name, align }: { name: string; align: "left" | "right" }) {
   return (
     <div className={align === "right" ? "text-right" : "text-left"}>
       <p className="text-lg font-bold text-white">{name}</p>
-      <p className="text-xs text-slate-500">Team</p>
+      <p className="text-xs" style={{ color: "var(--color-text-subtle)" }}>
+        Team
+      </p>
     </div>
   );
 }
-
