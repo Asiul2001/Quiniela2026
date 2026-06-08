@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { CurrentUserIndicator } from "@/components/current-user-indicator";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,8 +15,25 @@ type RootLayoutProps = {
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/90 backdrop-blur">
+          <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-10">
+            <Link href="/" className="text-sm font-semibold transition hover:text-white">
+              Home
+            </Link>
+            <div className="flex items-center gap-3">
+              <CurrentUserIndicator />
+              <Link href="/predictions" className="text-sm text-slate-300 transition hover:text-white">
+                Predictions
+              </Link>
+              <Link href="/login" className="text-sm text-slate-300 transition hover:text-white">
+                Login
+              </Link>
+            </div>
+          </div>
+        </header>
+        {children}
+      </body>
     </html>
   );
 }
-

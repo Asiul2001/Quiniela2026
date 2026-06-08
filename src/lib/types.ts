@@ -1,4 +1,3 @@
-// Basic utility types
 export type ID = string;
 export type ISODateString = string;
 export type Nullable<T> = T | null;
@@ -13,11 +12,9 @@ export const STAGES = [
 
 export const LEAGUE_ROLES = ["member", "manager", "owner"] as const;
 export const PLATFORM_ROLES = ["platform_admin"] as const;
-
+export const LEAGUE_VISIBILITIES = ["public", "private", "unlisted"] as const;
 export const MATCH_STATUSES = ["scheduled", "live", "completed", "cancelled"] as const;
-
 export const TEAM_TIERS = ["favorite", "strong_outsider", "dark_horse", "big_surprise"] as const;
-
 export const BONUS_PREDICTION_TYPES = [
   "champion",
   "finalists",
@@ -25,15 +22,27 @@ export const BONUS_PREDICTION_TYPES = [
   "golden_boot",
   "dark_horse",
 ] as const;
+export const SUPPORT_CONTRIBUTION_OPTIONS = [5, 10, 20] as const;
 
 export type Stage = (typeof STAGES)[number];
 export type LeagueRole = (typeof LEAGUE_ROLES)[number];
 export type PlatformRole = (typeof PLATFORM_ROLES)[number];
+export type LeagueVisibility = (typeof LEAGUE_VISIBILITIES)[number];
 export type MatchStatus = (typeof MATCH_STATUSES)[number];
 export type TeamTier = (typeof TEAM_TIERS)[number];
 export type BonusPredictionType = (typeof BONUS_PREDICTION_TYPES)[number];
 
-// Pagination
+export type PredictionLockState = "open" | "phase-creation-locked" | "match-locked";
+export type DarkHorseProgress = "none" | "quarter_final" | "semi_final" | "final";
+export type SupportIntentStatus = "pending" | "maybe_later" | "dismissed" | "pledged";
+
+export type ScoreValue = {
+  home: number;
+  away: number;
+};
+
+export type MatchOutcome = "home" | "away" | "draw";
+
 export type Paginated<T> = {
   items: T[];
   total: number;
@@ -41,8 +50,7 @@ export type Paginated<T> = {
   offset: number;
 };
 
-// User
-export interface User {
+export interface UserIdentity {
   id: ID;
   email?: string | null;
   username?: string | null;
@@ -54,16 +62,37 @@ export interface User {
   updatedAt?: ISODateString | null;
 }
 
-// League and membership
+export type User = UserIdentity;
+
+export interface SupportPromptSettings {
+  suggestedAmount: number;
+  predefinedAmounts: readonly number[];
+  allowCustomAmount: boolean;
+  enabled: boolean;
+}
+
+export interface LeagueSettings {
+  supportPrompt?: SupportPromptSettings;
+  allowPublicJoin?: boolean;
+  requirePhaseCompletion?: boolean;
+  predictionEditGraceSeconds?: number;
+  futureFeatures?: {
+    donations?: boolean;
+    paidPlans?: boolean;
+    moderationBots?: boolean;
+  };
+}
+
 export interface League {
   id: ID;
   name: string;
-  slug?: string;
+  slug: string;
   description?: string | null;
   ownerUserId: ID;
-  visibility?: "public" | "private" | "unlisted";
-  settings?: Record<string, unknown>;
+  visibility: LeagueVisibility;
   scoringRuleId?: ID | null;
+  activeTournamentId?: ID | null;
+  settings: LeagueSettings;
   createdAt: ISODateString;
   updatedAt?: ISODateString | null;
 }
@@ -75,25 +104,25 @@ export interface LeagueMember {
   role: LeagueRole;
   displayName?: string | null;
   joinedAt: ISODateString;
-  isActive?: boolean;
+  isActive: boolean;
   points?: number;
   invitedBy?: ID | null;
 }
 
-// Tournament
 export interface Tournament {
   id: ID;
   leagueId?: ID | null;
   name: string;
-  slug?: string;
-  year?: number | null;
+  slug: string;
+  year: number;
+  hostLabel?: string | null;
   startAt?: ISODateString | null;
   endAt?: ISODateString | null;
-  settings?: Record<string, unknown>;
-  createdAt?: ISODateString;
+  isActive: boolean;
+  createdAt: ISODateString;
+  updatedAt?: ISODateString | null;
 }
 
-// Team
 export interface Team {
   id: ID;
   tournamentId: ID;
@@ -101,15 +130,8 @@ export interface Team {
   shortName?: string | null;
   code?: string | null;
   country?: string | null;
-  logoUrl?: string | null;
-  tier?: TeamTier | null;
-  createdAt?: ISODateString;
-}
-
-// Match and scoring
-export interface ScoreValue {
-  home: number;
-  away: number;
+  tier: TeamTier;
+  createdAt: ISODateString;
 }
 
 export interface Match {
@@ -117,7 +139,8 @@ export interface Match {
   tournamentId: ID;
   stage: Stage;
   round?: string | number | null;
-  kickoffAt?: ISODateString | null;
+  kickoffAt: ISODateString;
+  phaseDeadlineId?: ID | null;
   venue?: string | null;
   homeTeamId: ID;
   awayTeamId: ID;
@@ -127,79 +150,89 @@ export interface Match {
   winnerTeamId?: ID | null;
   extraTime?: boolean;
   penalties?: { home?: number; away?: number } | null;
-  createdAt?: ISODateString;
+  createdAt: ISODateString;
   updatedAt?: ISODateString | null;
 }
 
-// Match predictions
 export interface MatchPrediction {
   id: ID;
+  leagueId: ID;
+  tournamentId: ID;
   matchId: ID;
   userId: ID;
-  leagueId?: ID | null;
-  predictedAt: ISODateString;
   predictedScore: ScoreValue;
-  submittedBy?: ID | null;
+  predictedAt: ISODateString;
+  updatedAt?: ISODateString | null;
   pointsAwarded?: number | null;
-  isLocked?: boolean;
-  isForfeited?: boolean;
+  submittedBy?: ID | null;
 }
 
-// Bonus predictions (champion, golden boot, etc.)
 export interface BonusPrediction {
   id: ID;
-  tournamentId?: ID | null;
-  leagueId?: ID | null;
+  leagueId: ID;
+  tournamentId: ID;
   userId: ID;
   type: BonusPredictionType;
-  key?: string;
+  key?: string | null;
   value: string | number | boolean | Array<string | number> | Record<string, unknown>;
   createdAt: ISODateString;
+  updatedAt?: ISODateString | null;
   pointsAwarded?: number | null;
   resolvedAt?: ISODateString | null;
 }
 
-// Scoring rules
 export interface StageScoringRule {
   stage: Stage;
-  outcomePoints: number; // correct result (win/draw/loss)
-  goalDifferencePoints: number; // correct goal difference
-  exactScorePoints: number; // exact scoreline
+  outcomePoints: number;
+  goalDifferencePoints: number;
+  exactScorePoints: number;
+}
+
+export interface DarkHorseRuleSet {
+  multipliers: Record<TeamTier, number>;
+  progressPoints: Record<Exclude<DarkHorseProgress, "none">, number>;
 }
 
 export interface ScoringRule {
   id: ID;
-  name?: string;
+  name: string;
   leagueId?: ID | null;
-  default: {
-    outcomePoints: number;
-    goalDifferencePoints: number;
-    exactScorePoints: number;
-    // optional per-bonus rule points
-    bonusPoints?: Record<string, number> | null;
-  };
-  byStage?: Partial<Record<Stage, StageScoringRule>>;
-  darkHorseMultipliers?: Partial<Record<TeamTier, number>>;
-  createdAt?: ISODateString;
+  byStage: Record<Stage, StageScoringRule>;
+  darkHorse: DarkHorseRuleSet;
+  bonusPoints?: Partial<Record<BonusPredictionType, number>>;
+  createdAt: ISODateString;
   updatedAt?: ISODateString | null;
 }
-
-// Dark horse picks
-export type DarkHorseProgress = "quarter_final" | "semi_final" | "final" | "none";
 
 export interface DarkHorsePick {
   id: ID;
   leagueId: ID;
+  tournamentId: ID;
   userId: ID;
   teamId: ID;
   pickedAt: ISODateString;
-  multiplier?: number; // optional points multiplier
   pointsAwarded?: number | null;
   progress?: DarkHorseProgress;
 }
 
-// Prediction lock states
-export type PredictionLockState = "open" | "phase-creation-locked" | "match-locked";
+export interface PhaseDeadline {
+  id: ID;
+  tournamentId: ID;
+  stage: Stage;
+  deadlineAt: ISODateString;
+  label?: string | null;
+  createdAt: ISODateString;
+  updatedAt?: ISODateString | null;
+}
 
-// Export leftovers for convenience
-export { STAGES, LEAGUE_ROLES, PLATFORM_ROLES, MATCH_STATUSES, TEAM_TIERS, BONUS_PREDICTION_TYPES };
+export interface SupportIntent {
+  id: ID;
+  leagueId: ID;
+  userId: ID;
+  amount?: number | null;
+  currency: string;
+  status: SupportIntentStatus;
+  note?: string | null;
+  createdAt: ISODateString;
+  updatedAt?: ISODateString | null;
+}
