@@ -1,9 +1,8 @@
 "use client";
 
-import { BonusPicksCard } from "@/components/bonus-pick-card";
 import { CalendarDays, Lock, PencilLine, Shield, Sparkles, TimerReset } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ensureLeagueMembershipForUser, getUserDisplayName } from "@/lib/auth";
 import { getCountryFlagUrl } from "@/lib/country-flags";
 import { deleteLocalPrediction, getLocalPredictions, saveLocalPrediction } from "@/lib/local-predictions";
@@ -54,7 +53,7 @@ function isPlaceholderKnockoutLabel(name: string) {
 }
 
 function extractGroupCode(groupTitle: string) {
-  const match = groupTitle.match(/(?:group|grupo)\s*([A-Z])/i);
+  const match = groupTitle.match(/group\s*([A-Z])/i);
   return match?.[1]?.toUpperCase() ?? null;
 }
 
@@ -111,6 +110,7 @@ type RoundOf32PreviewMatch = {
   id: string;
   matchNumber: number;
   stageLabel: string;
+  kickoffDate: string;
   sectionDateLabel: string;
   dateLabel: string;
   timeLabel: string;
@@ -147,9 +147,6 @@ type ScoreDraft = {
 };
 
 type ViewMode = "date" | "group";
-type DensityMode = "wide" | "compact";
-type MatchStatusFilter = "all" | "unanswered" | "saved";
-type StageFilter = "all" | "group" | "roundOf32";
 
 type PageTab = "predictions" | "roundOf32Preview";
 
@@ -246,7 +243,6 @@ function assignBestThirdPreviewSlots(
 }
 
 export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) {
-  
   const { user: currentUser } = useAuthUser();
   const currentUserName = getUserDisplayName(currentUser);
   const defaultPredictionIds = useMemo(
@@ -266,12 +262,10 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
   });
   const [savingMatchId, setSavingMatchId] = useState<string | null>(null);
   const [savedMatchIds, setSavedMatchIds] = useState<Record<string, boolean>>(defaultPredictionIds);
+  const [selectedStage, setSelectedStage] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<MatchStatusFilter>("all");
   const [showOpenOnly, setShowOpenOnly] = useState(false);
-  const [selectedStage, setSelectedStage] = useState<StageFilter>("all");
   const [viewMode, setViewMode] = useState<ViewMode>("date");
-  const [densityMode, setDensityMode] = useState<DensityMode>("wide");
   const [pageTab, setPageTab] = useState<PageTab>("predictions");
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [now, setNow] = useState(() => Date.now());
@@ -474,37 +468,18 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
     [editableMatches],
   );
 
-  const hasDraftResponse = useCallback((matchId: string) => {
-    const draft = drafts[matchId];
-    if (!draft) {
-      return false;
-    }
-
-    return Boolean(draft.home.trim() || draft.away.trim());
-  }, [drafts]);
+  const availableStages = useMemo(() => {
+    const stages = Array.from(new Set([...editableMatches.map((match) => match.stage), "Dieciseisavos"]));
+    return ["all", ...stages];
+  }, [editableMatches]);
 
   const filteredMatches = useMemo(() => {
     return editableMatches.filter((match) => {
-      if (selectedStage === "group" && match.stageKey !== "group") {
-        return false;
-      }
-
-      if (selectedStage === "roundOf32" && match.stageKey !== "round_of_32") {
+      if (selectedStage !== "all" && match.stage !== selectedStage) {
         return false;
       }
 
       if (showOpenOnly && !match.liveCanCreate && !match.liveCanEdit) {
-        return false;
-      }
-
-      const isSaved = Boolean(savedMatchIds[match.id]);
-      const isUnanswered = !isSaved && !hasDraftResponse(match.id);
-
-      if (statusFilter === "saved" && !isSaved) {
-        return false;
-      }
-
-      if (statusFilter === "unanswered" && !isUnanswered) {
         return false;
       }
 
@@ -520,7 +495,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
         match.stage.toLowerCase().includes(query)
       );
     });
-  }, [editableMatches, hasDraftResponse, savedMatchIds, searchQuery, selectedStage, showOpenOnly, statusFilter]);
+  }, [editableMatches, selectedStage, searchQuery, showOpenOnly]);
 
   const predictionStats = useMemo(() => {
     const total = editableMatches.length;
@@ -694,7 +669,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
     >();
 
     for (const match of editableMatches) {
-      if (match.stageKey !== "group") {
+      if (!match.stage.toLowerCase().startsWith("group")) {
         continue;
       }
 
@@ -827,6 +802,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
         id: `round-of-32-preview-${template.matchNumber}`,
         matchNumber: template.matchNumber,
         stageLabel: "Dieciseisavos",
+        kickoffDate: template.kickoffDate,
         sectionDateLabel: formatPreviewSectionDateLabel(template.kickoffDate),
         dateLabel: formatPreviewSectionDateLabel(template.kickoffDate),
         timeLabel: "Hora por confirmar",
@@ -838,11 +814,35 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
     });
   }, [predictedBestThirdPlacers, predictedGroupStandings]);
 
+  const filteredRoundOf32PreviewMatches = useMemo(() => {
+    return roundOf32PreviewMatches.filter((match) => {
+      if (selectedStage !== "all" && selectedStage !== "Dieciseisavos") {
+        return false;
+      }
+
+      if (showOpenOnly) {
+        return false;
+      }
+
+      if (!searchQuery.trim()) {
+        return true;
+      }
+
+      const query = searchQuery.trim().toLowerCase();
+      return (
+        match.home.toLowerCase().includes(query) ||
+        match.away.toLowerCase().includes(query) ||
+        match.venue.toLowerCase().includes(query) ||
+        match.stageLabel.toLowerCase().includes(query)
+      );
+    });
+  }, [roundOf32PreviewMatches, searchQuery, selectedStage, showOpenOnly]);
+
   const groupedMatches = useMemo(() => {
     const groups = new Map<string, { title: string; subtitle: string; matches: EnrichedMatch[] }>();
 
     for (const match of filteredMatches) {
-      const roundLabel = match.roundNumber ? `Ronda ${match.roundNumber}` : match.stage;
+      const roundLabel = match.roundNumber ? `Jornada ${match.roundNumber}` : match.stage;
       const localDateLabel = formatSectionDateLabel(match.kickoffAt);
       const title = viewMode === "group" ? match.groupLabel ?? match.stage : roundLabel;
       const key = viewMode === "group" ? title : `${roundLabel}-${localDateLabel}`;
@@ -889,9 +889,29 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
   }, [filteredMatches, viewMode]);
 
   const groupedRoundOf32Preview = useMemo(() => {
+    if (viewMode === "group") {
+      if (filteredRoundOf32PreviewMatches.length === 0) {
+        return [];
+      }
+
+      const sortedMatches = [...filteredRoundOf32PreviewMatches].sort(
+        (a, b) => new Date(a.kickoffDate).getTime() - new Date(b.kickoffDate).getTime(),
+      );
+      const firstDate = sortedMatches[0]?.sectionDateLabel ?? "";
+      const lastDate = sortedMatches[sortedMatches.length - 1]?.sectionDateLabel ?? "";
+
+      return [
+        {
+          title: "Dieciseisavos",
+          subtitle: firstDate === lastDate ? firstDate : `${firstDate} - ${lastDate}`,
+          matches: sortedMatches,
+        },
+      ];
+    }
+
     const groups = new Map<string, { title: string; subtitle: string; matches: RoundOf32PreviewMatch[] }>();
 
-    for (const match of roundOf32PreviewMatches) {
+    for (const match of filteredRoundOf32PreviewMatches) {
       const existing = groups.get(match.sectionDateLabel);
 
       if (existing) {
@@ -907,7 +927,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
     }
 
     return Array.from(groups.values());
-  }, [roundOf32PreviewMatches]);
+  }, [filteredRoundOf32PreviewMatches, viewMode]);
 
   function updateDraft(matchId: string, side: "home" | "away", value: string) {
     if (value !== "" && !/^\d+$/.test(value)) return;
@@ -1088,7 +1108,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
           }}
         >
           <div>
-            <p className="text-sm font-semibold tracking-[0.24em] uppercase">Pron√≥sticos</p>
+            <p className="text-sm font-semibold tracking-[0.24em] uppercase">PronÛsticos</p>
             <p className="mt-1 text-sm" style={{ color: "var(--color-text-subtle)" }}>
               {data.leagueName} | {data.tournamentName}
             </p>
@@ -1134,24 +1154,24 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                 }}
               >
                 <Sparkles className="h-4 w-4" style={{ color: "var(--color-accent)" }} />
-                Pron√≥stico partido a partido
+                PronÛstico partido a partido
               </div>
 
               <div className="space-y-4">
                 <h1 className="max-w-4xl text-4xl font-black tracking-[-0.05em] text-white sm:text-5xl lg:text-6xl">
-                  Ingresa tus pron√≥sticos
+                  Ingresa tus pronÛsticos
                 </h1>
                 <p className="max-w-2xl text-lg leading-8" style={{ color: "var(--color-text-subtle)" }}>
-                  Aqu√≠ ves solo los partidos que ya se pueden pronosticar. Los cruces de dieciseisavos con equipos todav√≠a sin definir aparecen en una pesta√±a separada de vista previa.
+                  AquÌ ves solo los partidos que ya se pueden pronosticar. Los cruces de dieciseisavos con equipos todavÌa sin definir aparecen en una pestaÒa separada de vista previa.
                 </p>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-3">
                   <SummaryCard icon={<PencilLine className="h-4 w-4" />} label="Partidos visibles" value={String(editableMatches.length)} detail="Partidos disponibles para pronosticar" />
-                  <SummaryCard icon={<Shield className="h-4 w-4" />} label="Todav√≠a editables" value={String(unlockedMatches)} detail="Antes del inicio" />
+                  <SummaryCard icon={<Shield className="h-4 w-4" />} label="TodavÌa editables" value={String(unlockedMatches)} detail="Antes del inicio" />
                 <SummaryCard
                   icon={<CalendarDays className="h-4 w-4" />}
-                  label="Pron√≥sticos completos"
+                  label="PronÛsticos completos"
                   value={`${predictionStats.filled}/${predictionStats.total}`}
                   detail={
                     predictionStats.remaining > 0
@@ -1181,7 +1201,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs uppercase tracking-[0.22em]" style={{ color: "var(--color-text-subtle)" }}>
-                    Reglas de edici√≥n
+                    Reglas de ediciÛn
                   </p>
                   <h2 className="mt-2 text-2xl font-black">Bloqueo al iniciar el partido</h2>
                 </div>
@@ -1189,9 +1209,9 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
               </div>
 
               <div className="mt-6 space-y-4 text-sm leading-7" style={{ color: "var(--color-text-subtle)" }}>
-                <p>Los pron√≥sticos siguen editables hasta la hora exacta de inicio del partido.</p>
-                <p>Cuando empieza el partido, la tarjeta se bloquea autom√°ticamente y ya no se puede editar.</p>
-                <p>Los pron√≥sticos se guardan en tu cuenta de la liga. Solo se usa guardado local si la sincronizaci√≥n no est√° disponible.</p>
+                <p>Los pronÛsticos siguen editables hasta la hora exacta de inicio del partido.</p>
+                <p>Cuando empieza el partido, la tarjeta se bloquea autom·ticamente y ya no se puede editar.</p>
+                <p>Los pronÛsticos se guardan en tu cuenta de la liga. Solo se usa guardado local si la sincronizaciÛn no est· disponible.</p>
               </div>
 
               <div className="mt-6">
@@ -1202,8 +1222,8 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                 </div>
                 <p className="mt-2 text-sm" style={{ color: "var(--color-text-subtle)" }}>
                   {predictionStats.remaining > 0
-                    ? `Completa ${predictionStats.remaining} pron√≥sticos m√°s para terminar.`
-                    : "Tus pron√≥sticos est√°n completos."}
+                    ? `Completa ${predictionStats.remaining} pronÛsticos m·s para terminar.`
+                    : "Tus pronÛsticos est·n completos."}
                 </p>
               </div>
             </div>
@@ -1222,7 +1242,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                   Vista
                 </p>
                 <p className="mt-1 text-sm" style={{ color: "var(--color-text-subtle)" }}>
-                  Separa los pron√≥sticos editables de la vista previa de dieciseisavos.
+                  Separa los pronÛsticos editables de la vista previa de dieciseisavos.
                 </p>
               </div>
               <div className="inline-flex rounded-full border border-white/10 bg-slate-950/70 p-1">
@@ -1235,7 +1255,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                     color: "var(--color-text)",
                   }}
                 >
-                  Pron√≥sticos
+                  PronÛsticos
                 </button>
                 <button
                   type="button"
@@ -1262,24 +1282,26 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                   Filtros
                 </p>
                 <p className="mt-1 text-sm" style={{ color: "var(--color-text-subtle)" }}>
-                  Ordena, busca y reduce la lista para ver todos los partidos m√°s r√°pido.
+                  Filtra los partidos por fase, equipo o estado editable.
                 </p>
               </div>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+              <div className="grid gap-3 sm:grid-cols-4">
                 <label className="block">
-                  <span className="sr-only">Estado</span>
+                  <span className="sr-only">Fase</span>
                   <select
-                    value={statusFilter}
-                    onChange={(event) => setStatusFilter(event.target.value as MatchStatusFilter)}
+                    value={selectedStage}
+                    onChange={(event) => setSelectedStage(event.target.value)}
                     className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-white outline-none transition duration-200"
                   >
-                    <option value="all">Todos los estados</option>
-                    <option value="unanswered">Sin respuesta</option>
-                    <option value="saved">Guardados</option>
+                    {availableStages.map((stage) => (
+                      <option key={stage} value={stage}>
+                        {stage === "all" ? "Todas las fases" : stage}
+                      </option>
+                    ))}
                   </select>
                 </label>
                 <label className="block">
-                  <span className="sr-only">Orden</span>
+                  <span className="sr-only">Modo de vista</span>
                   <select
                     value={viewMode}
                     onChange={(event) => setViewMode(event.target.value as ViewMode)}
@@ -1287,18 +1309,6 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                   >
                     <option value="date">Fecha / jornada</option>
                     <option value="group">Grupo</option>
-                  </select>
-                </label>
-                <label className="block">
-                  <span className="sr-only">Densidad</span>
-                  <select
-                    value={densityMode}
-                    onChange={(event) => setDensityMode(event.target.value as DensityMode)}
-                    className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-white outline-none transition duration-200"
-                  >
-                    <option value="wide">Vista amplia</option>
-                    <option value="compact">Vista compacta</option>
-
                   </select>
                 </label>
                 <label className="block">
@@ -1323,82 +1333,34 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
             </div>
           </div>
 
-{memberId ? (
-  <BonusPicksCard
-    teams={data.teams}
-    leagueId={data.leagueId}
-    memberId={memberId}
-    tournamentId={data.tournamentId}
-    initialBonusPredictions={data.bonusPredictions}  
-  />
-) : (
-  <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5">
-    Cargando tus predicciones especiales...
-  </div>
-)}
-
           {pageTab === "predictions" ? (
               <>
-                  <section
-  className={
-    densityMode === "compact"
-      ? "grid gap-6 xl:grid-cols-2 2xl:grid-cols-3"
-      : "grid gap-8"
-  }
->
+                  <section className="grid gap-8">
                     {groupedMatches.length === 0 ? (
                       <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-center text-slate-300">
-                        No hay partidos que coincidan con tus filtros. Limpia la b√∫squeda o elige otra fase.
+                        No hay partidos que coincidan con tus filtros. Limpia la b˙squeda o elige otra fase.
                       </div>
                     ) : (
                       <>
                         {groupedMatches.map((group) => (
                           <div key={`${group.title}-${group.subtitle}`} className="space-y-4">
-                            <div className="flex items-center justify-between">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                               <div>
-                                <p
-                                  className="text-xs font-semibold uppercase tracking-[0.24em]"
-                                  style={{ color: "var(--color-text-subtle)" }}
-                                >
+                                <p className="text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: "var(--color-text-subtle)" }}>
                                   {group.title}
                                 </p>
-
-                                {densityMode !== "compact" ? (
-                                  <h2 className="text-2xl font-black text-white">{group.subtitle}</h2>
-                                ) : null}
+                                <h2 className="text-2xl font-black text-white">{group.subtitle}</h2>
                               </div>
-
                               <p className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
                                 {group.matches.length} partidos
                               </p>
                             </div>
 
-                            <div
-                              className={
-                                densityMode === "compact"
-                                  ? "grid gap-2"
-                                  : "grid gap-5 xl:grid-cols-2"
-                              }
-                            >
+                            <div className="grid gap-5 xl:grid-cols-2">
                               {group.matches.map((match) => {
                                 const draft = drafts[match.id] ?? { home: "", away: "" };
                                 const isSaving = savingMatchId === match.id;
                                 const isSaved = Boolean(savedMatchIds[match.id]);
-
-                                if (densityMode === "compact") {
-                                  return (
-                                    <CompactPredictionCard
-                                      key={match.id}
-                                      match={match}
-                                      draft={draft}
-                                      isSaved={isSaved}
-                                      isSaving={isSaving}
-                                      onHomeChange={(value) => updateDraft(match.id, "home", value)}
-                                      onAwayChange={(value) => updateDraft(match.id, "away", value)}
-                                      onSave={() => savePrediction(match.id)}
-                                    />
-                                  );
-                                }
 
                                 return (
                                   <article
@@ -1481,7 +1443,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                                               }}
                                             >
                                               <Lock className="h-3.5 w-3.5" />
-                                      {match.liveLockState === "match-locked" ? "Bloqueado" : "Cierre de creaci√≥n"}
+                                      {match.liveLockState === "match-locked" ? "Bloqueado" : "Cierre de creaciÛn"}
                                             </span>
                                           ) : (
                                             <div className="flex items-center gap-2">
@@ -1545,7 +1507,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                                               boxShadow: "0 14px 30px rgba(0, 0, 0, 0.18)",
                                             }}
                                           >
-                                            {isSaving ? "Guardando..." : "Guardar pron√≥stico"}
+                                            {isSaving ? "Guardando..." : "Guardar pronÛstico"}
                                           </button>
                                         </div>
                                       </div>
@@ -1560,6 +1522,9 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                     )}
                   </section>
               </>
+            
+
+            
           ) : (
                 <section className="grid gap-8">
                   <div
@@ -1570,50 +1535,36 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                       <p className="text-sm font-semibold uppercase tracking-[0.24em]" style={{ color: "var(--color-text-subtle)" }}>
                         Vista previa
                       </p>
-                      <h2 className="text-2xl font-black text-white">As√≠ se ver√≠an los dieciseisavos</h2>
+                      <h2 className="text-2xl font-black text-white">AsÌ se verÌan los dieciseisavos</h2>
                       <p className="text-sm leading-6" style={{ color: "var(--color-text-subtle)" }}>
-                        Esta pesta√±a muestra c√≥mo quedar√≠an los cruces seg√∫n tus pron√≥sticos actuales de la fase de grupos y de los mejores terceros. Mientras los equipos no est√©n definidos oficialmente, aqu√≠ no se puede pronosticar ni guardar resultados.
+                        Esta pestaÒa muestra cÛmo quedarÌan los cruces seg˙n tus pronÛsticos actuales de la fase de grupos y de los mejores terceros. Mientras los equipos no estÈn definidos oficialmente, aquÌ no se puede pronosticar ni guardar resultados.
                       </p>
                     </div>
                   </div>
 
                   {groupedRoundOf32Preview.length === 0 ? (
                     <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-center text-slate-300">
-                      Completa m√°s pron√≥sticos de grupos para ver una simulaci√≥n de los dieciseisavos.
+                      {showOpenOnly
+                        ? "No hay cruces proyectados abiertos en esta vista previa, porque aquÌ solo se comparan escenarios."
+                        : "Ajusta tus filtros o completa m·s pronÛsticos de grupos para ver una simulaciÛn de los dieciseisavos."}
                     </div>
                   ) : (
                     groupedRoundOf32Preview.map((group) => (
                       <div key={`${group.title}-${group.subtitle}`} className="space-y-4">
-                        <div className="flex items-center justify-between">
-                        <div>
-                          <p
-                            className="text-xs font-semibold uppercase tracking-[0.24em]"
-                            style={{ color: "var(--color-text-subtle)" }}
-                          >
-                            {group.title}
-                          </p>
-
-                          {densityMode !== "compact" ? (
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: "var(--color-text-subtle)" }}>
+                              {group.title}
+                            </p>
                             <h2 className="text-2xl font-black text-white">{group.subtitle}</h2>
-                          ) : null}
+                          </div>
+                          <p className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
+                            {group.matches.length} partidos
+                          </p>
                         </div>
 
-                        <p className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
-                          {group.matches.length} partidos
-                        </p>
-                      </div>
-                        <div
-                          className={
-                            densityMode === "compact"
-                              ? "grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
-                              : "grid gap-5 xl:grid-cols-2"
-                          }
-                        >
+                        <div className="grid gap-5 xl:grid-cols-2">
                           {group.matches.map((match) => {
-                            if (densityMode === "compact") {
-                              return <CompactPreviewCard key={match.id} match={match} />;
-                            }
-
                             return (
                               <article
                                 key={match.id}
@@ -1787,319 +1738,6 @@ function TeamPanel({ name, align }: { name: string; align: "left" | "right" }) {
       </p>
     </div>
   );
-}
-
-function StatusChip({
-  children,
-  tone,
-}: {
-  children: React.ReactNode;
-  tone: "saved" | "open" | "locked" | "preview";
-}) {
-  const styles =
-    tone === "saved"
-      ? {
-          border: "1px solid rgba(74, 222, 128, 0.3)",
-          backgroundColor: "rgba(34, 197, 94, 0.16)",
-          color: "rgb(220, 252, 231)",
-        }
-      : tone === "locked"
-        ? {
-            border: "1px solid rgba(251, 191, 36, 0.28)",
-            backgroundColor: "rgba(245, 158, 11, 0.14)",
-            color: "rgb(254, 240, 138)",
-          }
-        : tone === "preview"
-          ? {
-              border: "1px solid rgba(250, 204, 21, 0.28)",
-              backgroundColor: "rgba(202, 138, 4, 0.15)",
-              color: "rgb(254, 240, 138)",
-            }
-          : {
-              border: "1px solid color-mix(in srgb, var(--color-accent) 28%, transparent)",
-              backgroundColor: "color-mix(in srgb, var(--color-accent) 16%, transparent)",
-              color: "var(--color-text)",
-            };
-
-  return (
-    <span
-      className="rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em]"
-      style={styles}
-    >
-      {children}
-    </span>
-  );
-}
-
-function CompactTeamRow({
-  name,
-  align,
-}: {
-  name: string;
-  align: "left" | "right";
-}) {
-  const flagUrl = getCountryFlagUrl(name);
-  const justify = align === "right" ? "justify-end" : "justify-start";
-  const textAlign = align === "right" ? "text-right" : "text-left";
-
-  return (
-    <div className={textAlign}>
-      <div className={`flex items-center ${justify} gap-2`}>
-        {flagUrl ? (
-          <img
-            src={flagUrl}
-            alt={`Bandera de ${name}`}
-            className="h-4 w-6 rounded-sm object-cover"
-            width={24}
-            height={16}
-          />
-        ) : null}
-        <span className="text-sm font-black text-white sm:text-[15px]">
-  {getTeamCode(name)}
-</span>
-      </div>
-    </div>
-  );
-}
-
-function PreviewSlotLabel({
-  name,
-  align,
-}: {
-  name: string;
-  align: "left" | "right";
-}) {
-  const isRealTeam = Boolean(getCountryFlagUrl(name));
-  const flagUrl = getCountryFlagUrl(name);
-
-  return (
-    <div className={align === "right" ? "text-right" : "text-left"}>
-      <div
-        className={`flex items-center gap-2 ${
-          align === "right" ? "justify-end" : "justify-start"
-        }`}
-      >
-        {flagUrl ? (
-          <img
-            src={flagUrl}
-            alt=""
-            className="h-4 w-6 rounded-sm object-cover"
-          />
-        ) : null}
-
-        <span className="text-xs font-black leading-4 text-white">
-          {isRealTeam ? getTeamCode(name) : name}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function CompactScoreInput({
-  label,
-  value,
-  disabled,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  disabled: boolean;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="block">
-      <span className="sr-only">{label}</span>
-      <input
-        inputMode="numeric"
-        pattern="[0-9]*"
-        value={value}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-8 w-10 rounded-lg px-1 text-center text-sm font-black outline-none transition duration-200"
-        style={{
-          border: "1px solid var(--color-border-accent)",
-          backgroundColor: disabled ? "rgba(255, 255, 255, 0.04)" : "rgba(255, 255, 255, 0.1)",
-          color: disabled ? "var(--color-text-subtle)" : "var(--color-text)",
-        }}
-        placeholder="-"
-      />
-    </label>
-  );
-}
-
-function CompactPredictionCard({
-  match,
-  draft,
-  isSaved,
-  isSaving,
-  onHomeChange,
-  onAwayChange,
-  onSave,
-}: {
-  match: EnrichedMatch;
-  draft: ScoreDraft;
-  isSaved: boolean;
-  isSaving: boolean;
-  onHomeChange: (value: string) => void;
-  onAwayChange: (value: string) => void;
-  onSave: () => void;
-}) {
-  const timing = formatLocalMatchTime(match.kickoffAt);
-
-  return (
-  <article
-    className="rounded-2xl px-3 py-2"
-    style={{
-      border: "1px solid var(--color-border-accent)",
-      backgroundColor: "rgba(255, 255, 255, 0.045)",
-    }}
-  >
-    <div className="grid grid-cols-[4.8rem_4.5rem_5.5rem_4.5rem_3.5rem] items-center gap-2 text-xs">
-      <div style={{ color: "var(--color-text-subtle)" }}>
-        <div>{timing.date}</div>
-        <div>{timing.time}</div>
-      </div>
-
-      <CompactTeamRow name={match.home} align="right" />
-
-      <div className="flex items-center justify-center gap-1">
-        <CompactScoreInput
-          label={`Marcador de ${match.home}`}
-          value={draft.home}
-          disabled={(!match.liveCanCreate && !match.liveCanEdit) || isSaving}
-          onChange={onHomeChange}
-        />
-        <span style={{ color: "var(--color-text-subtle)" }}>-</span>
-        <CompactScoreInput
-          label={`Marcador de ${match.away}`}
-          value={draft.away}
-          disabled={(!match.liveCanCreate && !match.liveCanEdit) || isSaving}
-          onChange={onAwayChange}
-        />
-      </div>
-
-      <CompactTeamRow name={match.away} align="left" />
-
-      <button
-        type="button"
-        disabled={(!match.liveCanCreate && !match.liveCanEdit) || isSaving}
-        onClick={onSave}
-        className="rounded-full px-3 py-1.5 text-[11px] font-semibold disabled:opacity-50"
-        style={{
-          border: "1px solid color-mix(in srgb, var(--color-accent) 28%, transparent)",
-          backgroundColor: isSaved
-            ? "color-mix(in srgb, var(--color-accent) 20%, rgba(255,255,255,0.08))"
-            : "rgba(255,255,255,0.06)",
-          color: "var(--color-text)",
-        }}
-      >
-        {isSaving ? "..." : isSaved ? "OK" : "Guardar"}
-      </button>
-    </div>
-  </article>
-);
-}
-
-function getTeamCode(name: string) {
-  const codes: Record<string, string> = {
-    "M√©xico": "MEX",
-    "Sud√°frica": "RSA",
-    "Corea del Sur": "KOR",
-    "Rep√∫blica Checa": "CZE",
-    "Canad√°": "CAN",
-    "Bosnia y Herzegovina": "BIH",
-    "Estados Unidos": "USA",
-    "Paraguay": "PAR",
-    "Catar": "QAT",
-    "Suiza": "SUI",
-    "Brasil": "BRA",
-    "Marruecos": "MAR",
-    "Hait√≠": "HAI",
-    "Escocia": "SCO",
-    "Australia": "AUS",
-    "Turqu√≠a": "TUR",
-    "Alemania": "GER",
-    "Cura√ßao": "CUW",
-    "Pa√≠ses Bajos": "NED",
-    "Jap√≥n": "JPN",
-    "Costa de Marfil": "CIV",
-    "Ecuador": "ECU",
-    "Suecia": "SWE",
-    "T√∫nez": "TUN",
-    "Espa√±a": "ESP",
-    "Cabo Verde": "CPV",
-    "B√©lgica": "BEL",
-    "Egipto": "EGY",
-    "Arabia Saudita": "KSA",
-    "Uruguay": "URU",
-    "Ir√°n": "IRN",
-    "Nueva Zelanda": "NZL",
-    "Francia": "FRA",
-    "Senegal": "SEN",
-    "Irak": "IRQ",
-    "Noruega": "NOR",
-    "Argentina": "ARG",
-    "Algeria": "ALG",
-    "Argelia": "ALG",
-    "Austria": "AUT",
-    "Jordania": "JOR",
-    "Portugal": "POR",
-    "Rep√∫blica Democr√°tica del Congo": "COD",
-    "Inglaterra": "ENG",
-    "Croacia": "CRO",
-    "Ghana": "GHA",
-    "Panam√°": "PAN",
-    "Uzbekist√°n": "UZB",
-    "Colombia": "COL",
-  };
-
-  return codes[name.trim()] ?? name.trim().slice(0, 3).toUpperCase();
-}
-
-function CompactPreviewCard({ match }: { match: RoundOf32PreviewMatch }) {
-return (
-  <article
-    className="rounded-2xl p-3"
-    style={{
-      border: "1px solid var(--color-border-accent)",
-      backgroundColor: "rgba(255, 255, 255, 0.045)",
-    }}
-  >
-    <div className="space-y-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="text-xs leading-5" style={{ color: "var(--color-text-subtle)" }}>
-          <div>{match.dateLabel}</div>
-          <div>{match.timeLabel}</div>
-        </div>
-
-        <span
-          className="rounded-full px-2 py-1 text-[10px] font-semibold uppercase"
-          style={{
-            border: "1px solid rgba(251, 191, 36, 0.28)",
-            backgroundColor: "rgba(245, 158, 11, 0.14)",
-            color: "rgb(254, 240, 138)",
-          }}
-        >
-          Preview
-        </span>
-      </div>
-
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-        <PreviewSlotLabel name={match.home} align="right" />
-
-        <span className="text-xs font-bold" style={{ color: "var(--color-text-subtle)" }}>
-          VS
-        </span>
-
-        <PreviewSlotLabel name={match.away} align="left" />
-      </div>
-
-      <p className="truncate text-xs" style={{ color: "var(--color-text-subtle)" }}>
-        {match.venue}
-      </p>
-    </div>
-  </article>
-);
 }
 
 function ScoreInput({

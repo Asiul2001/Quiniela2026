@@ -12,6 +12,9 @@ export type HomePageMatch = {
   poolActivity: number;
   kickoffAt: string;
   status?: string;
+  homeScore?: number | null;
+  awayScore?: number | null;
+  matchMinute?: number | null;
 };
 
 export type HomePageLeaderboardEntry = {
@@ -57,9 +60,9 @@ const fallbackMatches: HomePageMatch[] = [
     time: "19:00",
     stage: "Group Stage",
     venue: "Estadio Azteca",
-    poolActivity: 72,
+    poolActivity: 40,
     kickoffAt: "2026-06-11T19:00:00Z",
-    status: "scheduled",
+    status: "Próximo",
   },
   {
     id: "2",
@@ -71,7 +74,7 @@ const fallbackMatches: HomePageMatch[] = [
     venue: "Toronto Stadium",
     poolActivity: 58,
     kickoffAt: "2026-06-12T02:00:00Z",
-    status: "scheduled",
+    status: "Próximo",
   },
   {
     id: "3",
@@ -83,7 +86,7 @@ const fallbackMatches: HomePageMatch[] = [
     venue: "BC Place",
     poolActivity: 44,
     kickoffAt: "2026-06-12T19:00:00Z",
-    status: "scheduled",
+    status: "Próximo",
   },
 ];
 
@@ -209,7 +212,7 @@ if (leagueTournamentError || !leagueTournament) {
     const [
       { data: tournament },
       { data: teams },
-      { data: matches },
+      { data: matches, error: matchesError },
       { data: members },
       { data: profiles },
       { data: predictions },
@@ -229,6 +232,12 @@ if (leagueTournamentError || !leagueTournament) {
         .eq("league_id", league.id),
     ]);
 
+    console.log("HOME RAW MATCH QUERY", {
+      tournamentIdUsed: leagueTournament.tournament_id,
+      matchesCount: matches?.length ?? 0,
+      matchesError,
+    });
+
     const teamMap = new Map((teams ?? []).map((team) => [team.id, team.name]));
 
     const profileMap = new Map(
@@ -238,10 +247,26 @@ if (leagueTournamentError || !leagueTournament) {
       ]),
     );
 
-    const upcomingMatches = (matches ?? [])
-      .filter((match) => match.status === "scheduled" || match.status === "live")
-      .slice(0, 5)
-      .map((match, index) => {
+    const now = new Date();
+
+const upcomingMatches = (matches ?? [])
+  .filter((match) => {
+  const kickoff = new Date(match.kickoff_at);
+
+  return (
+    match.status === "en Vivo" ||
+    match.status === "Próximo" ||
+    kickoff >= new Date()
+  );
+})
+  .sort((a, b) => {
+    if (a.status === "live" && b.status !== "live") return -1;
+    if (a.status !== "live" && b.status === "live") return 1;
+
+    return new Date(a.kickoff_at).getTime() - new Date(b.kickoff_at).getTime();
+  })
+  .slice(0, 5)
+  .map((match, index) => {
         const kickoff = formatKickoffParts(match.kickoff_at);
         const matchPredictions = (predictions ?? []).filter(
           (prediction) => prediction.match_id === match.id,
@@ -261,7 +286,10 @@ if (leagueTournamentError || !leagueTournament) {
             "TBD",
           poolActivity: Math.round((matchPredictions.length / memberCount) * 100),
           kickoffAt: match.kickoff_at,
-          status: match.status ?? "scheduled",
+          status: match.status ?? "Próximo",
+          homeScore: match.home_score,
+          awayScore: match.away_score,
+          matchMinute: null,
         };
       });
 
@@ -295,7 +323,10 @@ if (leagueTournamentError || !leagueTournament) {
           );
 
         const totalMatches = Math.max((matches ?? []).length, 1);
-        const completion = Math.round((memberPredictions.length / totalMatches) * 100);
+        const completion = Math.min(
+  100,
+  Math.round((memberPredictions.length / totalMatches) * 100),
+);
 
         return {
           name: profileMap.get(member.user_id) ?? "Player",
@@ -330,14 +361,16 @@ if (leagueTournamentError || !leagueTournament) {
         )
       : 0;
 
-
-
+    console.log("HOME MATCHES DEBUG", {
+  matchesCount: matches?.length ?? 0,
+  firstMatches: matches?.slice(0, 5),
+});
     return {
       leagueName: league.name,
       leagueDescription: league.description ?? fallbackData.leagueDescription,
       tournamentName: tournament?.name ?? fallbackData.tournamentName,
       featuredMatch: upcomingMatches[0] ?? fallbackData.featuredMatch,
-      upcomingMatches: upcomingMatches.length ? upcomingMatches : fallbackData.upcomingMatches,
+      upcomingMatches: upcomingMatches,
       leaderboard: leaderboard.length ? leaderboard : fallbackData.leaderboard,
       predictionCompletion,
       stats: {

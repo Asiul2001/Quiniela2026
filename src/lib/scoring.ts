@@ -13,24 +13,29 @@ import type {
 } from "@/lib/types";
 
 export const DEFAULT_STAGE_SCORING_RULES: Record<Stage, StageScoringRule> = {
-  group: { stage: "group", outcomePoints: 2, goalDifferencePoints: 1, exactScorePoints: 2 },
-  round_of_16: { stage: "round_of_16", outcomePoints: 3, goalDifferencePoints: 1, exactScorePoints: 2 },
-  quarter_final: { stage: "quarter_final", outcomePoints: 4, goalDifferencePoints: 1, exactScorePoints: 2 },
-  semi_final: { stage: "semi_final", outcomePoints: 5, goalDifferencePoints: 1, exactScorePoints: 3 },
-  final: { stage: "final", outcomePoints: 6, goalDifferencePoints: 1, exactScorePoints: 4 },
+  group: { stage: "group", outcomePoints: 1, goalDifferencePoints: 1, exactScorePoints: 3 },
+  round_of_32: { stage: "round_of_32", outcomePoints: 1, goalDifferencePoints: 1, exactScorePoints: 3 },
+  round_of_16: { stage: "round_of_16", outcomePoints: 1, goalDifferencePoints: 1, exactScorePoints: 3 },
+  quarter_final: { stage: "quarter_final", outcomePoints: 1, goalDifferencePoints: 1, exactScorePoints: 3 },
+  semi_final: { stage: "semi_final", outcomePoints: 1, goalDifferencePoints: 1, exactScorePoints: 3 },
+  third_place: { stage: "third_place", outcomePoints: 1, goalDifferencePoints: 1, exactScorePoints: 3 },
+  final: { stage: "final", outcomePoints: 1, goalDifferencePoints: 1, exactScorePoints: 3 },
 };
 
 export const DARK_HORSE_MULTIPLIERS: Record<TeamTier, number> = {
-  favorite: 0,
-  strong_outsider: 1,
+  favorite: 1,
+  strong_outsider: 1.5,
   dark_horse: 2,
-  big_surprise: 3,
+  big_surprise: 2.5,
 };
 
 export const DARK_HORSE_PROGRESS_POINTS: Record<Exclude<DarkHorseProgress, "none">, number> = {
-  quarter_final: 5,
-  semi_final: 8,
-  final: 12,
+  round_of_32: 1,
+  round_of_16: 2,
+  quarter_final: 3,
+  semi_final: 4,
+  final: 5,
+  champion: 6,
 };
 
 export type MatchScoreBreakdown = {

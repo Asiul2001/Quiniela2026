@@ -49,40 +49,49 @@ function getMatchStatusLabel(status?: string) {
   return "Scheduled";
 }
 
-const themes = [
+export const themes = [
   { value: "standard", label: "Standard", borderColor: "rgba(148, 163, 184, 0.25)", textColor: "rgb(226, 232, 240)" },
   { value: "canada", label: "Canada energy", borderColor: "rgba(248, 113, 113, 0.25)", textColor: "rgb(254, 226, 226)" },
   { value: "usa", label: "USA lights", borderColor: "rgba(96, 165, 250, 0.25)", textColor: "rgb(219, 234, 254)" },
   { value: "mexico", label: "Mexico spirit", borderColor: "rgba(74, 222, 128, 0.25)", textColor: "rgb(220, 252, 231)" },
 ] as const;
 
-type ThemeName = (typeof themes)[number]["value"];
-const THEME_STORAGE_KEY = "selected-theme";
-const THEME_CHANGE_EVENT = "selected-theme-change";
+export const THEME_MASCOTS = {
+  standard: null,
+  canada: "/mascots/Maple.webp",
+  usa: "/mascots/Clutch.webp",
+  mexico: "/mascots/Zayu.webp",
+} as const;
 
-function isThemeName(value: string | null): value is ThemeName {
+export type ThemeName = (typeof themes)[number]["value"];
+export const THEME_STORAGE_KEY = "selected-theme";
+export const THEME_CHANGE_EVENT = "selected-theme-change";
+
+
+
+export function isThemeName(value: string | null): value is ThemeName {
   return value !== null && themes.some((option) => option.value === value);
 }
 
-function getThemeSnapshot(): ThemeName {
+export function getThemeSnapshot(): ThemeName {
   if (typeof window === "undefined") {
     return "standard";
   }
 
-  const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
   return isThemeName(savedTheme) ? savedTheme : "standard";
 }
 
-function getThemeServerSnapshot(): ThemeName {
+export function getThemeServerSnapshot(): ThemeName {
   return "standard";
 }
 
-function subscribeToTheme(callback: () => void) {
+export function subscribeToTheme(callback: () => void) {
   if (typeof window === "undefined") {
     return () => undefined;
   }
 
-  const handleThemeChange = () => callback();
+const handleThemeChange = () => callback();
 
   window.addEventListener(THEME_CHANGE_EVENT, handleThemeChange);
   window.addEventListener("storage", handleThemeChange);
@@ -93,13 +102,14 @@ function subscribeToTheme(callback: () => void) {
   };
 }
 
-function persistTheme(theme: ThemeName) {
+export function persistTheme(theme: ThemeName) {
   window.localStorage.setItem(THEME_STORAGE_KEY, theme);
   window.dispatchEvent(new Event(THEME_CHANGE_EVENT));
 }
 
 export function HomePageClient({ data }: { data: HomePageData }) {
   const theme = useSyncExternalStore(subscribeToTheme, getThemeSnapshot, getThemeServerSnapshot);
+  const mascot = THEME_MASCOTS[theme];
   const { user } = useAuthUser();
   const isPrimaryOwner = getUserDisplayName(user)?.trim().toLowerCase() === PRIMARY_OWNER_NAME.toLowerCase();
 
@@ -107,11 +117,34 @@ export function HomePageClient({ data }: { data: HomePageData }) {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
 
+  
+
   return (
     <main
       className="relative min-h-screen overflow-hidden"
       style={{ backgroundColor: "var(--color-primary)", color: "var(--color-text)" }}
     >
+      {/* Theme mascot */}
+{theme !== "standard" && (
+  <img
+    src={
+      theme === "canada"
+        ? "/mascots/Maple.webp"
+        : theme === "usa"
+        ? "/mascots/Clutch.webp"
+        : "/mascots/Zayu.webp"
+    }
+    alt="Theme mascot"
+    className="pointer-events-none fixed z-0"
+    style={{
+      top: "-10px",
+      left: "-140px",
+      width: "650px",
+      opacity: 0.80,
+      filter: "drop-shadow(0 0 40px rgba(0,0,0,0.35))",
+    }}
+  />
+)}
       <div className="absolute inset-0" style={{ backgroundImage: "var(--gradient-primary)" }} />
       <div
         className="absolute inset-x-0 top-[-8rem] h-[36rem] opacity-80 blur-3xl"
@@ -202,7 +235,7 @@ export function HomePageClient({ data }: { data: HomePageData }) {
                   }}
                 >
                   <Sparkles className="h-4 w-4" style={{ color: "var(--color-accent)" }} />
-                  Canada - USA - Mexico 2026 inspired theme
+                  Canada - USA - Mexico 2026
                 </div>
 
                 <div className="space-y-6">
@@ -210,7 +243,7 @@ export function HomePageClient({ data }: { data: HomePageData }) {
                     {data.leagueName}
                   </h1>
                   <p className="max-w-2xl text-lg leading-8 sm:text-xl" style={{ color: "var(--color-text-subtle)" }}>
-                    {data.leagueDescription}
+                    
                   </p>
                 </div>
 
@@ -280,9 +313,9 @@ export function HomePageClient({ data }: { data: HomePageData }) {
                   <div className="mb-4 flex items-center justify-between">
                     <div>
                       <p className="text-xs uppercase tracking-[0.24em]" style={{ color: "var(--color-text-subtle)" }}>
-                        Prediction completion
+                        Porcentaje de predicciones
                       </p>
-                      <p className="mt-2 text-3xl font-black">{data.predictionCompletion}% ready</p>
+                      <p className="mt-2 text-3xl font-black">{data.predictionCompletion}% listo</p>
                     </div>
                     <Activity className="h-5 w-5" style={{ color: "var(--color-accent)" }} />
                   </div>
@@ -290,8 +323,8 @@ export function HomePageClient({ data }: { data: HomePageData }) {
                   <ProgressBar value={data.predictionCompletion} />
 
                   <div className="mt-4 flex items-center justify-between text-sm" style={{ color: "var(--color-text-subtle)" }}>
-                    <span>Pool-wide completion</span>
-                    <span>{data.upcomingMatches.length} featured fixtures</span>
+                    <span></span>
+                    <span>{data.upcomingMatches.length} juegos mostrados</span>
                   </div>
                 </div>
 
@@ -305,11 +338,11 @@ export function HomePageClient({ data }: { data: HomePageData }) {
                   }}
                 >
                   <p className="text-xs uppercase tracking-[0.24em]" style={{ color: "var(--color-text-subtle)" }}>
-                    Matchday pulse
+                    
                   </p>
                   <p className="mt-3 text-4xl font-black">{data.stats.players}</p>
                   <p className="mt-2 text-sm leading-6" style={{ color: "var(--color-text-subtle)" }}>
-                    Active players currently tracked in the league table.
+                    Jugadores activos en la tabla de la liga
                   </p>
                 </div>
               </div>
@@ -369,13 +402,13 @@ export function HomePageClient({ data }: { data: HomePageData }) {
                 </div>
               </div>
             </div>
-
+            
             <FeaturedMatchCard match={data.featuredMatch} />
           </div>
         </header>
 
         <section className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-          <Card title="Leaderboard" action="View full table" actionHref="/players">
+          <Card title="Tabla de Ranking" action="Ver la tabla completa" actionHref="/players">
             <div className="space-y-4">
               {data.leaderboard.map((player) => (
                 <LeaderboardRow key={`${player.rank}-${player.name}`} player={player} />
@@ -383,7 +416,7 @@ export function HomePageClient({ data }: { data: HomePageData }) {
             </div>
           </Card>
 
-          <Card title="Upcoming matches" action="Enter predictions" actionHref="/predictions">
+          <Card title="Próximos juegos" action="Completa tus predicciones" actionHref="/predictions">
             <div className="space-y-4">
               {data.upcomingMatches.map((match) => (
                 <UpcomingMatchRow key={match.id} match={match} />
@@ -416,6 +449,18 @@ function PitchLines() {
   );
 }
 
+function getLiveStatusText(match: HomePageMatch) {
+  if (match.status === "live") {
+    return `LIVE · ${match.matchMinute ?? 0}' · ${match.home} ${match.homeScore ?? 0}-${match.awayScore ?? 0} ${match.away}`;
+  }
+
+  if (match.status === "completed" || match.status === "finished") {
+    return `FINAL · ${match.home} ${match.homeScore ?? 0}-${match.awayScore ?? 0} ${match.away}`;
+  }
+
+  return `${getMatchStatusLabel(match.status)} · ${match.venue}`;
+}
+
 function FeaturedMatchCard({ match }: { match: HomePageMatch }) {
   const local = formatLocalKickoff(match.kickoffAt);
 
@@ -437,10 +482,10 @@ function FeaturedMatchCard({ match }: { match: HomePageMatch }) {
       <div className="relative">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.24em]" style={{ color: "var(--color-text-subtle)" }}>
-              Next match
-            </p>
-            <h3 className="mt-2 text-3xl font-black">Featured fixture</h3>
+            <p className="text-xs uppercase tracking-[0.24em]">
+  {match.status === "live" ? "En vivo" : "Próximo juego"}
+</p>
+            <h3 className="mt-2 text-3xl font-black">Partido:</h3>
           </div>
           <ChevronRight className="h-5 w-5" style={{ color: "var(--color-accent)" }} />
         </div>
@@ -461,11 +506,18 @@ function FeaturedMatchCard({ match }: { match: HomePageMatch }) {
         </div>
 
         <div className="mt-6 grid gap-3 sm:grid-cols-3">
-          <FeaturePill label={`${local.date} · ${local.time}`} />
-          <FeaturePill label={match.venue} />
-          <FeaturePill label={`${getMatchStatusLabel(match.status)} · ${local.zone}`} />
-        </div>
-
+  <FeaturePill label={`${local.date} · ${local.time}`} />
+  <FeaturePill label={match.venue} />
+  <FeaturePill
+    label={
+      match.status === "live"
+        ? `LIVE · ${match.matchMinute ?? 0}' · ${match.homeScore ?? 0}-${match.awayScore ?? 0}`
+        : match.status === "completed" || match.status === "finished"
+          ? `FINAL · ${match.homeScore ?? 0}-${match.awayScore ?? 0}`
+          : getMatchStatusLabel(match.status)
+    }
+  />
+</div>
         <div className="mt-6">
           <div className="flex items-center justify-between text-sm" style={{ color: "var(--color-text-subtle)" }}>
             <span>Prediction pressure</span>
@@ -586,13 +638,13 @@ function LeaderboardRow({ player }: { player: HomePageLeaderboardEntry }) {
         <div className="text-right">
           <p className="text-2xl font-black">{player.points}</p>
           <p className="text-xs" style={{ color: "var(--color-accent)" }}>
-            {player.trend} this round
+            {player.trend} esta ronda
           </p>
         </div>
       </div>
 
       <div className="mt-4 flex items-center justify-between text-xs" style={{ color: "var(--color-text-subtle)" }}>
-        <span>Prediction accuracy</span>
+        <span>Completado</span>
         <span>{player.completion}%</span>
       </div>
       <div className="mt-2">
@@ -640,7 +692,7 @@ function UpcomingMatchRow({ match }: { match: HomePageMatch }) {
           {match.venue}
         </span>
         <span className="text-sm text-right" style={{ color: "var(--color-text-subtle)" }}>
-          {getMatchStatusLabel(match.status)} · {match.poolActivity}% picked
+          {getMatchStatusLabel(match.status)} · {match.poolActivity}% completado
         </span>
       </div>
       <div className="mt-2">
@@ -712,4 +764,4 @@ function TeamName({ name, align }: { name: string; align: "left" | "right" }) {
       </p>
     </div>
   );
-}
+};

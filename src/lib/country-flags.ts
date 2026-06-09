@@ -15,7 +15,7 @@ const COUNTRY_CODE_MAP: Record<string, string> = {
   Australia: "au",
   Turquía: "tr",
   Alemania: "de",
-  Curacao: "cw",
+  Curaçao: "cw",
   "Países Bajos": "nl",
   Japón: "jp",
   "Costa de Marfil": "ci",

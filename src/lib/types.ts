@@ -3,10 +3,12 @@ export type ISODateString = string;
 export type Nullable<T> = T | null;
 
 export const STAGES = [
-  "group",
+ "group",
+  "round_of_32",
   "round_of_16",
   "quarter_final",
   "semi_final",
+  "third_place",
   "final",
 ] as const;
 
@@ -33,7 +35,14 @@ export type TeamTier = (typeof TEAM_TIERS)[number];
 export type BonusPredictionType = (typeof BONUS_PREDICTION_TYPES)[number];
 
 export type PredictionLockState = "open" | "phase-creation-locked" | "match-locked";
-export type DarkHorseProgress = "none" | "quarter_final" | "semi_final" | "final";
+export type DarkHorseProgress =
+  | "none"
+  | "round_of_32"
+  | "round_of_16"
+  | "quarter_final"
+  | "semi_final"
+  | "final"
+  | "champion";
 export type SupportIntentStatus = "pending" | "maybe_later" | "dismissed" | "pledged";
 
 export type ScoreValue = {

@@ -3,7 +3,18 @@ import path from "node:path";
 import { PRIMARY_LEAGUE_SLUG } from "@/lib/app-config";
 import { getPredictionLockState } from "@/lib/prediction-locking";
 import { hasSupabaseEnv as hasSupabaseClientEnv, supabase } from "@/lib/supabase";
-import type { PhaseDeadline, Stage } from "@/lib/types";
+import type { PhaseDeadline, Stage, TeamTier } from "@/lib/types";
+
+export type TeamOptions = {
+  id: string;
+  name: string;
+  tier: TeamTier;
+}
+
+export type BonusPredictionOption = {
+  type: "dark_horse" | "golden_boot";
+  payload: Record<string, unknown>;
+};
 
 export type PredictionEntryMatch = {
   id: string;
@@ -28,17 +39,24 @@ export type PredictionEntryMatch = {
 export type PredictionsPageData = {
   leagueId: string;
   leagueName: string;
+  bonusPredictions: BonusPredictionOption[];
   tournamentName: string;
   matches: PredictionEntryMatch[];
   initialPredictions: Record<string, { home: string; away: string }>;
+
+  teams: TeamOptions[];
+  tournamentId: string;
 };
 
 const fallbackBaseData: PredictionsPageData = {
   leagueId: "33333333-3333-3333-3333-333333333333",
   leagueName: "Familia Strassburger",
+  bonusPredictions: [],
   tournamentName: "FIFA World Cup 2026",
   matches: [],
   initialPredictions: {},
+  teams: [],
+  tournamentId: "11111111-1111-1111-1111-111111111111", 
 };
 
 const fallbackTournamentId = "11111111-1111-1111-1111-111111111111";
@@ -576,7 +594,7 @@ export async function getPredictionsPageData(): Promise<PredictionsPageData> {
       };
     }
 
-    const [{ data: tournament }, { data: teams }, { data: matches }, { data: phaseDeadlines }] = await Promise.all([
+    const [{ data: tournament }, { data: teams }, { data: matches }, { data: phaseDeadlines }, { data: bonusPredictions },] = await Promise.all([
       client
         .from("tournaments")
         .select("name")
@@ -584,7 +602,7 @@ export async function getPredictionsPageData(): Promise<PredictionsPageData> {
         .single(),
       client
         .from("teams")
-        .select("id,name")
+        .select("id,name,team_tier")
         .eq("tournament_id", leagueTournament.tournament_id),
       client
         .from("matches")
@@ -595,9 +613,22 @@ export async function getPredictionsPageData(): Promise<PredictionsPageData> {
         .from("phase_deadlines")
         .select("stage,deadline_at")
         .eq("league_tournament_id", leagueTournament.id),
+    client
+      .from("bonus_predictions")
+      .select("type,payload")
+      .eq("league_id", league.id)
+      .eq("tournament_id", leagueTournament.tournament_id),
     ]);
 
-    const teamMap = new Map((teams ?? []).map((team) => [team.id, team.name]));
+const teamMap = new Map((teams ?? []).map((team) => [team.id, team.name]));
+
+const teamOptions: TeamOptions[] = (teams ?? []).map((team) => ({
+  id: team.id,
+  name: team.name,
+  tier: team.team_tier ?? "favorite",
+}));
+
+    
     const deadlines: PhaseDeadline[] = (phaseDeadlines ?? []).map((deadline) => ({
       id: `${leagueTournament.id}-${deadline.stage}`,
       tournamentId: leagueTournament.tournament_id,
@@ -641,14 +672,24 @@ export async function getPredictionsPageData(): Promise<PredictionsPageData> {
         });
       });
 
-    return {
-      leagueId: league.id,
-      leagueName: league.name,
-      tournamentName: tournament?.name ?? fallbackBaseData.tournamentName,
-      matches: predictionMatches.length ? mergeSupplementalRoundOf16(predictionMatches) : (await getFallbackData()).matches,
-      initialPredictions: {},
-    };
-  } catch {
-    return getFallbackData();
-  }
+return {
+  leagueId: league.id,
+  leagueName: league.name,
+  tournamentName: tournament?.name ?? fallbackBaseData.tournamentName,
+  tournamentId: leagueTournament.tournament_id,
+  teams: teamOptions,
+  matches: predictionMatches.length
+    ? mergeSupplementalRoundOf16(predictionMatches)
+    : (await getFallbackData()).matches,
+  initialPredictions: {},
+  bonusPredictions: (bonusPredictions ?? []).map((prediction) => ({
+  type: prediction.type,
+  payload: prediction.payload ?? {},
+})),
+};
+
+} catch (error) {
+  console.error("Error fetching predictions page data:", error);
+  throw error;
+}
 }
