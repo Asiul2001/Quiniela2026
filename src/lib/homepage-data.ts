@@ -87,7 +87,11 @@ const fallbackMatches: HomePageMatch[] = [
   },
 ];
 
-const fallbackLeaderboard: HomePageLeaderboardEntry[] = [];
+const fallbackLeaderboard: HomePageLeaderboardEntry[] = [
+  { rank: 1, name: "Luisa", points: 42, trend: "+8", completion: 94 },
+  { rank: 2, name: "Carlos", points: 37, trend: "+5", completion: 86 },
+  { rank: 3, name: "Ana", points: 35, trend: "+3", completion: 82 },
+];
 
 const fallbackData: HomePageData = {
   leagueName: `${PRIMARY_LEAGUE_NAME} Quiniela`,
@@ -148,6 +152,8 @@ function getTrendLabel(points: number): string {
   return points > 0 ? `+${points}` : "+0";
 }
 
+console.log("getHomePageData called");  
+
 export async function getHomePageData(): Promise<HomePageData> {
   if (!hasSupabaseEnv() || !supabase) {
     return fallbackData;
@@ -156,24 +162,43 @@ export async function getHomePageData(): Promise<HomePageData> {
   const client = supabase;
 
   try {
-    const { data: league, error: leagueError } = await client
-      .from("leagues")
-      .select("id,name,slug,description")
-      .eq("slug", PRIMARY_LEAGUE_SLUG)
-      .single();
+    const { data: leagues, error: leagueError } = await client
+  .from("leagues")
+  .select("*");
 
-    if (leagueError || !league) {
-      return fallbackData;
-    }
+console.log("ALL LEAGUES", leagues);
 
-    const { data: leagueTournament } = await client
-      .from("league_tournaments")
-      .select("id,tournament_id")
-      .eq("league_id", league.id)
-      .limit(1)
-      .single();
+const league = leagues?.find(
+  (l) => l.slug === PRIMARY_LEAGUE_SLUG
+);
 
-    if (!leagueTournament) {
+console.log("FOUND LEAGUE", league);
+
+console.log("HOME league result", {
+  league,
+  leagueError,
+  PRIMARY_LEAGUE_SLUG,
+});
+
+if (leagueError || !league) {
+  return fallbackData;
+}
+const {
+  data: leagueTournament,
+  error: leagueTournamentError,
+} = await client
+  .from("league_tournaments")
+  .select("id,tournament_id")
+  .eq("league_id", league.id)
+  .limit(1)
+  .single();
+
+console.log("HOME leagueTournament result", {
+  leagueTournament,
+  leagueTournamentError,
+});
+
+if (leagueTournamentError || !leagueTournament) {
       return {
         ...fallbackData,
         leagueName: league.name,
@@ -291,6 +316,13 @@ export async function getHomePageData(): Promise<HomePageData> {
         ...entry,
       }));
 
+    console.log("HOME LEADERBOARD DEBUG", {
+      membersCount: members?.length ?? 0,
+      profilesCount: profiles?.length ?? 0,
+      predictionsCount: predictions?.length ?? 0,
+      leaderboard,
+    });
+
     const predictionCompletion = leaderboard.length
       ? Math.round(
           leaderboard.reduce((sum, entry) => sum + entry.completion, 0) /
@@ -298,13 +330,15 @@ export async function getHomePageData(): Promise<HomePageData> {
         )
       : 0;
 
+
+
     return {
       leagueName: league.name,
       leagueDescription: league.description ?? fallbackData.leagueDescription,
       tournamentName: tournament?.name ?? fallbackData.tournamentName,
       featuredMatch: upcomingMatches[0] ?? fallbackData.featuredMatch,
       upcomingMatches: upcomingMatches.length ? upcomingMatches : fallbackData.upcomingMatches,
-      leaderboard,
+      leaderboard: leaderboard.length ? leaderboard : fallbackData.leaderboard,
       predictionCompletion,
       stats: {
         players: String((members ?? []).length),

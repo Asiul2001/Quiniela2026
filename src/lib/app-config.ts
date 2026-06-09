@@ -4,7 +4,7 @@ export const PRIMARY_OWNER_ACCESS_CODE = "2569";
 export const PRIMARY_LEAGUE_SLUG = "familia-strassburger";
 export const PRIMARY_LEAGUE_NAME = "Familia Strassburger";
 export const PRIMARY_LEAGUE_DESCRIPTION = "Private family league for Quiniela MVP testing";
-export const PRIMARY_TOURNAMENT_ID = "11111111-1111-1111-1111-111111111111";
+export const PRIMARY_TOURNAMENT_ID = "33333333-3333-3333-3333-333333333333";
 export const PRIMARY_TOURNAMENT_SLUG = "fifa-world-cup-2026";
 
 export const DEFAULT_STAGE_SCORING_RULES = [
