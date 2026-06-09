@@ -52,3 +52,19 @@
   --color-border-accent: rgba(74, 222, 128, 0.3);
   --gradient-primary: radial-gradient(circle_at_top_left, rgba(220, 38, 38, 0.22), transparent 34%), radial-gradient(circle_at_top_right, rgba(34, 197, 94, 0.34), transparent 34%), radial-gradient(circle_at_bottom_right, rgba(255, 248, 235, 0.14), transparent 32%);
 }
+
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+img,
+svg,
+video {
+  max-width: 100%;
+}
