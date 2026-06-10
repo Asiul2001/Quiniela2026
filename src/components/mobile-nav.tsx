@@ -7,7 +7,7 @@ import { CurrentUserIndicator } from "@/components/current-user-indicator";
 const links = [
   ["Stats", "/stats"],
   ["FAQs", "/faq"],
-  ["Tutorial prueba", "/tutorial"],
+  ["Tutorial", "/tutorial"],
   ["Jugadores", "/players"],
   ["Resultados", "/results"],
   ["Predictions", "/predictions"],
