@@ -12,6 +12,7 @@ export type TeamOptions = {
 }
 
 export type BonusPredictionOption = {
+  memberId: string;
   type: "dark_horse" | "golden_boot";
   payload: Record<string, unknown>;
 };
