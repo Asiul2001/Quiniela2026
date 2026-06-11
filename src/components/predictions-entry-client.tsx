@@ -1329,7 +1329,9 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
     leagueId={data.leagueId}
     memberId={memberId}
     tournamentId={data.tournamentId}
-    initialBonusPredictions={data.bonusPredictions}  
+    initialBonusPredictions={data.bonusPredictions.filter(
+      (prediction) => prediction.memberId === memberId
+    )}
   />
 ) : (
   <div className="rounded-[2rem] border border-white/10 bg-white/5 p-5">
