@@ -613,12 +613,11 @@ export async function getPredictionsPageData(): Promise<PredictionsPageData> {
         .from("phase_deadlines")
         .select("stage,deadline_at")
         .eq("league_tournament_id", leagueTournament.id),
-    client
-  .from("bonus_predictions")
-  .select("type,payload,member_id")
-  .eq("league_id", league.id)
-  .eq("member_id")
-  .eq("tournament_id", leagueTournament.tournament_id),
+      client
+        .from("bonus_predictions")
+        .select("type,payload,member_id")
+        .eq("league_id", league.id)
+        .eq("tournament_id", leagueTournament.tournament_id),
     ]);
 
 const teamMap = new Map((teams ?? []).map((team) => [team.id, team.name]));
@@ -684,6 +683,7 @@ return {
     : (await getFallbackData()).matches,
   initialPredictions: {},
   bonusPredictions: (bonusPredictions ?? []).map((prediction) => ({
+  memberID: prediction.member_id,
   type: prediction.type,
   payload: prediction.payload ?? {},
 })),
