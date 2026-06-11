@@ -614,10 +614,11 @@ export async function getPredictionsPageData(): Promise<PredictionsPageData> {
         .select("stage,deadline_at")
         .eq("league_tournament_id", leagueTournament.id),
     client
-      .from("bonus_predictions")
-      .select("type,payload")
-      .eq("league_id", league.id)
-      .eq("tournament_id", leagueTournament.tournament_id),
+  .from("bonus_predictions")
+  .select("type,payload")
+  .eq("league_id", league.id)
+  .eq("member_id", memberId)
+  .eq("tournament_id", leagueTournament.tournament_id),
     ]);
 
 const teamMap = new Map((teams ?? []).map((team) => [team.id, team.name]));
