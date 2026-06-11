@@ -617,7 +617,7 @@ export async function getPredictionsPageData(): Promise<PredictionsPageData> {
   .from("bonus_predictions")
   .select("type,payload")
   .eq("league_id", league.id)
-  .eq("member_id", memberId)
+  .eq("id")
   .eq("tournament_id", leagueTournament.tournament_id),
     ]);
 
