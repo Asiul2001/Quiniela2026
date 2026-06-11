@@ -25,10 +25,7 @@ export function BonusPicksCard({
   leagueId: string;
   memberId: string;
   tournamentId: string;
-  initialBonusPredictions: Array<{
-  type: "dark_horse" | "golden_boot";
-  payload: Record<string, unknown>;
-}>;
+initialBonusPredictions: BonusPredictionOption[];
 }) {
 
     
