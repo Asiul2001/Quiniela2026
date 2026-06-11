@@ -33,7 +33,7 @@ initialBonusPredictions: BonusPredictionOption[];
   const [goldenBoot, setGoldenBoot] = useState("");
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
+useEffect(() => {
   const darkHorsePrediction = initialBonusPredictions.find(
     (prediction) => prediction.type === "dark_horse",
   );
@@ -41,6 +41,9 @@ initialBonusPredictions: BonusPredictionOption[];
   const goldenBootPrediction = initialBonusPredictions.find(
     (prediction) => prediction.type === "golden_boot",
   );
+
+  setDarkHorseTeamId("");
+  setGoldenBoot("");
 
   if (
     darkHorsePrediction?.payload &&
@@ -58,19 +61,6 @@ initialBonusPredictions: BonusPredictionOption[];
     setGoldenBoot(String(goldenBootPrediction.payload.playerName));
   }
 }, [initialBonusPredictions]);
-
-  async function saveBonus(type: "dark_horse" | "golden_boot") {
-    setSaving(true);
-
-    const selectedTeam = teams.find((team) => team.id === darkHorseTeamId);
-
-    if (type === "dark_horse") {
-  setDarkHorseTeamId(darkHorseTeamId);
-}
-
-if (type === "golden_boot") {
-  setGoldenBoot(goldenBoot);
-}
 
     const payload =
       type === "dark_horse"
