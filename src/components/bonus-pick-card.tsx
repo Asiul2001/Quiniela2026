@@ -2,7 +2,7 @@
 
 
 
-import { BonusPredictionOption } from "@/lib/predictions-page-data";
+import type { BonusPredictionOption } from "@/lib/predictions-page-data";
 import { useState } from "react";
 import { useEffect} from "react";
 
