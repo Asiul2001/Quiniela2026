@@ -1,4 +1,5 @@
 import { PRIMARY_LEAGUE_NAME, PRIMARY_LEAGUE_SLUG } from "@/lib/app-config";
+import { getResolvedMatchStatus, isUpcomingMatchStatus } from "@/lib/match-status";
 import { hasSupabaseEnv as hasSupabaseClientEnv, supabase } from "@/lib/supabase";
 
 export type HomePageMatch = {
@@ -45,7 +46,6 @@ type PredictionScoreRow = {
 };
 
 type PredictionRow = {
-  id: string;
   member_id: string;
   match_id: string;
   prediction_scores: PredictionScoreRow | PredictionScoreRow[] | null;
@@ -54,39 +54,39 @@ type PredictionRow = {
 const fallbackMatches: HomePageMatch[] = [
   {
     id: "1",
-    home: "México",
-    away: "Sudáfrica",
+    home: "Mexico",
+    away: "South Africa",
     date: "Jun 11",
     time: "19:00",
     stage: "Group Stage",
     venue: "Estadio Azteca",
     poolActivity: 40,
     kickoffAt: "2026-06-11T19:00:00Z",
-    status: "Próximo",
+    status: "scheduled",
   },
   {
     id: "2",
-    home: "Corea del Sur",
-    away: "República Checa",
+    home: "South Korea",
+    away: "Czech Republic",
     date: "Jun 12",
     time: "02:00",
     stage: "Group Stage",
     venue: "Toronto Stadium",
     poolActivity: 58,
     kickoffAt: "2026-06-12T02:00:00Z",
-    status: "Próximo",
+    status: "scheduled",
   },
   {
     id: "3",
-    home: "Canadá",
-    away: "Bosnia y Herzegovina",
+    home: "Canada",
+    away: "Bosnia and Herzegovina",
     date: "Jun 12",
     time: "19:00",
     stage: "Group Stage",
     venue: "BC Place",
     poolActivity: 44,
     kickoffAt: "2026-06-12T19:00:00Z",
-    status: "Próximo",
+    status: "scheduled",
   },
 ];
 
@@ -155,53 +155,31 @@ function getTrendLabel(points: number): string {
   return points > 0 ? `+${points}` : "+0";
 }
 
-console.log("getHomePageData called");  
-
 export async function getHomePageData(): Promise<HomePageData> {
   if (!hasSupabaseEnv() || !supabase) {
     return fallbackData;
   }
 
-  const client = supabase;
-
   try {
-    const { data: leagues, error: leagueError } = await client
-  .from("leagues")
-  .select("*");
+    const client = supabase;
+    const { data: league, error: leagueError } = await client
+      .from("leagues")
+      .select("id,name,description")
+      .eq("slug", PRIMARY_LEAGUE_SLUG)
+      .single();
 
-console.log("ALL LEAGUES", leagues);
+    if (leagueError || !league) {
+      return fallbackData;
+    }
 
-const league = leagues?.find(
-  (l) => l.slug === PRIMARY_LEAGUE_SLUG
-);
+    const { data: leagueTournament, error: leagueTournamentError } = await client
+      .from("league_tournaments")
+      .select("id,tournament_id")
+      .eq("league_id", league.id)
+      .limit(1)
+      .single();
 
-console.log("FOUND LEAGUE", league);
-
-console.log("HOME league result", {
-  league,
-  leagueError,
-  PRIMARY_LEAGUE_SLUG,
-});
-
-if (leagueError || !league) {
-  return fallbackData;
-}
-const {
-  data: leagueTournament,
-  error: leagueTournamentError,
-} = await client
-  .from("league_tournaments")
-  .select("id,tournament_id")
-  .eq("league_id", league.id)
-  .limit(1)
-  .single();
-
-console.log("HOME leagueTournament result", {
-  leagueTournament,
-  leagueTournamentError,
-});
-
-if (leagueTournamentError || !leagueTournament) {
+    if (leagueTournamentError || !leagueTournament) {
       return {
         ...fallbackData,
         leagueName: league.name,
@@ -212,34 +190,39 @@ if (leagueTournamentError || !leagueTournament) {
     const [
       { data: tournament },
       { data: teams },
-      { data: matches, error: matchesError },
+      { data: matches },
       { data: members },
       { data: profiles },
       { data: predictions },
     ] = await Promise.all([
-      client.from("tournaments").select("id,name").eq("id", leagueTournament.tournament_id).single(),
-      client.from("teams").select("id,name").eq("tournament_id", leagueTournament.tournament_id),
+      client
+        .from("tournaments")
+        .select("id,name")
+        .eq("id", leagueTournament.tournament_id)
+        .single(),
+      client
+        .from("teams")
+        .select("id,name")
+        .eq("tournament_id", leagueTournament.tournament_id),
       client
         .from("matches")
         .select("id,stage,home_team_id,away_team_id,venue,kickoff_at,status,home_score,away_score")
         .eq("tournament_id", leagueTournament.tournament_id)
         .order("kickoff_at", { ascending: true }),
-      client.from("league_members").select("id,user_id").eq("league_id", league.id),
-      client.from("profiles").select("id,display_name,full_name"),
+      client
+        .from("league_members")
+        .select("id,user_id")
+        .eq("league_id", league.id),
+      client
+        .from("profiles")
+        .select("id,display_name,full_name"),
       client
         .from("predictions")
-        .select("id,member_id,match_id,prediction_scores(total_points)")
+        .select("member_id,match_id,prediction_scores(total_points)")
         .eq("league_id", league.id),
     ]);
 
-    console.log("HOME RAW MATCH QUERY", {
-      tournamentIdUsed: leagueTournament.tournament_id,
-      matchesCount: matches?.length ?? 0,
-      matchesError,
-    });
-
     const teamMap = new Map((teams ?? []).map((team) => [team.id, team.name]));
-
     const profileMap = new Map(
       (profiles ?? []).map((profile) => [
         profile.id,
@@ -247,26 +230,27 @@ if (leagueTournamentError || !leagueTournament) {
       ]),
     );
 
-    const now = new Date();
+    const now = Date.now();
+    const upcomingMatches = (matches ?? [])
+      .map((match) => ({
+        ...match,
+        resolvedStatus: getResolvedMatchStatus({
+          status: match.status,
+          kickoffAt: match.kickoff_at,
+          homeScore: match.home_score,
+          awayScore: match.away_score,
+          now,
+        }),
+      }))
+      .filter((match) => isUpcomingMatchStatus(match.resolvedStatus))
+      .sort((a, b) => {
+        if (a.resolvedStatus === "live" && b.resolvedStatus !== "live") return -1;
+        if (a.resolvedStatus !== "live" && b.resolvedStatus === "live") return 1;
 
-const upcomingMatches = (matches ?? [])
-  .filter((match) => {
-  const kickoff = new Date(match.kickoff_at);
-
-  return (
-    match.status === "en Vivo" ||
-    match.status === "Próximo" ||
-    kickoff >= new Date()
-  );
-})
-  .sort((a, b) => {
-    if (a.status === "live" && b.status !== "live") return -1;
-    if (a.status !== "live" && b.status === "live") return 1;
-
-    return new Date(a.kickoff_at).getTime() - new Date(b.kickoff_at).getTime();
-  })
-  .slice(0, 5)
-  .map((match, index) => {
+        return new Date(a.kickoff_at).getTime() - new Date(b.kickoff_at).getTime();
+      })
+      .slice(0, 5)
+      .map((match, index) => {
         const kickoff = formatKickoffParts(match.kickoff_at);
         const matchPredictions = (predictions ?? []).filter(
           (prediction) => prediction.match_id === match.id,
@@ -286,11 +270,11 @@ const upcomingMatches = (matches ?? [])
             "TBD",
           poolActivity: Math.round((matchPredictions.length / memberCount) * 100),
           kickoffAt: match.kickoff_at,
-          status: match.status ?? "Próximo",
+          status: match.resolvedStatus,
           homeScore: match.home_score,
           awayScore: match.away_score,
           matchMinute: null,
-        };
+        } satisfies HomePageMatch;
       });
 
     const completedMatchIds = new Set(
@@ -324,9 +308,9 @@ const upcomingMatches = (matches ?? [])
 
         const totalMatches = Math.max((matches ?? []).length, 1);
         const completion = Math.min(
-  100,
-  Math.round((memberPredictions.length / totalMatches) * 100),
-);
+          100,
+          Math.round((memberPredictions.length / totalMatches) * 100),
+        );
 
         return {
           name: profileMap.get(member.user_id) ?? "Player",
@@ -347,13 +331,6 @@ const upcomingMatches = (matches ?? [])
         ...entry,
       }));
 
-    console.log("HOME LEADERBOARD DEBUG", {
-      membersCount: members?.length ?? 0,
-      profilesCount: profiles?.length ?? 0,
-      predictionsCount: predictions?.length ?? 0,
-      leaderboard,
-    });
-
     const predictionCompletion = leaderboard.length
       ? Math.round(
           leaderboard.reduce((sum, entry) => sum + entry.completion, 0) /
@@ -361,16 +338,12 @@ const upcomingMatches = (matches ?? [])
         )
       : 0;
 
-    console.log("HOME MATCHES DEBUG", {
-  matchesCount: matches?.length ?? 0,
-  firstMatches: matches?.slice(0, 5),
-});
     return {
       leagueName: league.name,
       leagueDescription: league.description ?? fallbackData.leagueDescription,
       tournamentName: tournament?.name ?? fallbackData.tournamentName,
       featuredMatch: upcomingMatches[0] ?? fallbackData.featuredMatch,
-      upcomingMatches: upcomingMatches,
+      upcomingMatches,
       leaderboard: leaderboard.length ? leaderboard : fallbackData.leaderboard,
       predictionCompletion,
       stats: {

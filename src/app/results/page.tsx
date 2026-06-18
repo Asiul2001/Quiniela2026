@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getResultsPageData } from "@/lib/results-page-data";
 import { ResultsPageClient } from "@/components/results-page-client";
 
+export const dynamic = "force-dynamic";
 
 
 

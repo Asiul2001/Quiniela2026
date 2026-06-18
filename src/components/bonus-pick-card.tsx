@@ -1,10 +1,8 @@
 "use client";
 
-
-
+import { ChevronDown } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import type { BonusPredictionOption } from "@/lib/predictions-page-data";
-import { useState } from "react";
-import { useEffect} from "react";
 
 type Team = {
   id: string;
@@ -12,7 +10,30 @@ type Team = {
   tier: string | null;
 };
 
+type BonusPredictionPayload = {
+  type: "dark_horse" | "golden_boot";
+  payload: Record<string, unknown>;
+};
 
+function getSelections(predictions: BonusPredictionPayload[]) {
+  const darkHorsePrediction = predictions.find((prediction) => prediction.type === "dark_horse");
+  const goldenBootPrediction = predictions.find((prediction) => prediction.type === "golden_boot");
+
+  return {
+    darkHorseTeamId:
+      darkHorsePrediction?.payload &&
+      typeof darkHorsePrediction.payload === "object" &&
+      "teamId" in darkHorsePrediction.payload
+        ? String(darkHorsePrediction.payload.teamId)
+        : "",
+    goldenBoot:
+      goldenBootPrediction?.payload &&
+      typeof goldenBootPrediction.payload === "object" &&
+      "playerName" in goldenBootPrediction.payload
+        ? String(goldenBootPrediction.payload.playerName)
+        : "",
+  };
+}
 
 export function BonusPicksCard({
   teams,
@@ -25,77 +46,84 @@ export function BonusPicksCard({
   leagueId: string;
   memberId: string;
   tournamentId: string;
-initialBonusPredictions: BonusPredictionOption[];
+  initialBonusPredictions: BonusPredictionOption[];
 }) {
-
-    
-  const [darkHorseTeamId, setDarkHorseTeamId] = useState("");
-  const [goldenBoot, setGoldenBoot] = useState("");
+  const initialSelections = useMemo(
+    () => getSelections(initialBonusPredictions),
+    [initialBonusPredictions],
+  );
+  const [darkHorseTeamId, setDarkHorseTeamId] = useState(initialSelections.darkHorseTeamId);
+  const [goldenBoot, setGoldenBoot] = useState(initialSelections.goldenBoot);
   const [saving, setSaving] = useState(false);
 
-useEffect(() => {
-  const darkHorsePrediction = initialBonusPredictions.find(
-    (prediction) => prediction.type === "dark_horse",
-  );
+  useEffect(() => {
+    let active = true;
 
-  const goldenBootPrediction = initialBonusPredictions.find(
-    (prediction) => prediction.type === "golden_boot",
-  );
+    async function loadMemberBonusPredictions() {
+      try {
+        const response = await fetch(
+          `/api/bonus-predictions?leagueId=${encodeURIComponent(leagueId)}&memberId=${encodeURIComponent(memberId)}&tournamentId=${encodeURIComponent(tournamentId)}`,
+          { cache: "no-store" },
+        );
+        const payload = await response.json();
 
-  setDarkHorseTeamId("");
-  setGoldenBoot("");
+        if (!response.ok || !active) {
+          return;
+        }
 
-  if (
-    darkHorsePrediction?.payload &&
-    typeof darkHorsePrediction.payload === "object" &&
-    "teamId" in darkHorsePrediction.payload
-  ) {
-    setDarkHorseTeamId(String(darkHorsePrediction.payload.teamId));
-  }
+        const nextSelections = getSelections(payload.predictions ?? []);
+        setDarkHorseTeamId(nextSelections.darkHorseTeamId);
+        setGoldenBoot(nextSelections.goldenBoot);
+      } catch (error) {
+        console.error("Unable to load member bonus predictions", error);
+      }
+    }
 
-  if (
-    goldenBootPrediction?.payload &&
-    typeof goldenBootPrediction.payload === "object" &&
-    "playerName" in goldenBootPrediction.payload
-  ) {
-    setGoldenBoot(String(goldenBootPrediction.payload.playerName));
-  }
-}, [initialBonusPredictions]);
+    void loadMemberBonusPredictions();
 
-    const payload =
-      type === "dark_horse"
-        ? {
-            leagueId,
-            memberId,
-            tournamentId,
-            type,
-            teamId: darkHorseTeamId,
-            value: {
+    return () => {
+      active = false;
+    };
+  }, [leagueId, memberId, tournamentId]);
+
+  async function saveBonus(type: "dark_horse" | "golden_boot") {
+    setSaving(true);
+
+    try {
+      const selectedTeam = teams.find((team) => team.id === darkHorseTeamId);
+      const payload =
+        type === "dark_horse"
+          ? {
+              leagueId,
+              memberId,
+              tournamentId,
+              type,
               teamId: darkHorseTeamId,
-              category: selectedTeam?.tier ?? null,
-            },
-          }
-        : {
-            leagueId,
-            memberId,
-            tournamentId,
-            type,
-            teamId: null,
-            value: {
-              playerName: goldenBoot,
-            },
-          };
+              value: {
+                teamId: darkHorseTeamId,
+                category: selectedTeam?.tier ?? null,
+              },
+            }
+          : {
+              leagueId,
+              memberId,
+              tournamentId,
+              type,
+              teamId: null,
+              value: {
+                playerName: goldenBoot,
+              },
+            };
 
-    await fetch("/api/bonus-predictions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    setSaving(false);
+      await fetch("/api/bonus-predictions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } finally {
+      setSaving(false);
+    }
   }
-
-  
 
   return (
     <section
@@ -117,31 +145,37 @@ useEffect(() => {
       <div className="mt-6 grid gap-5 md:grid-cols-2">
         <div className="space-y-3">
           <label className="text-sm font-bold">Dark Horse</label>
-        
-<select
-  value={darkHorseTeamId}
-  onChange={(event) => setDarkHorseTeamId(event.target.value)}
-  className="w-full rounded-2xl px-4 py-3"
-  style={{
-    border: "1px solid var(--color-border-accent)",
-    backgroundColor: "rgba(255,255,255,0.06)",
-    color: "var(--color-text)",
-  }}
->
-  <option value="" style={{ color: "#111827", backgroundColor: "#ffffff" }}>
-    Selecciona un equipo
-  </option>
 
-  {teams.map((team) => (
-    <option
-      key={team.id}
-      value={team.id}
-      style={{ color: "#111827", backgroundColor: "#ffffff" }}
-    >
-      {team.name.trim()} · {team.tier ?? "sin categoría"}
-    </option>
-  ))}
-</select>
+          <div className="relative">
+            <select
+              value={darkHorseTeamId}
+              onChange={(event) => setDarkHorseTeamId(event.target.value)}
+              className="w-full appearance-none rounded-2xl px-4 py-3 pr-11"
+              style={{
+                border: "1px solid var(--color-border-accent)",
+                backgroundColor: "rgba(255,255,255,0.06)",
+                color: "var(--color-text)",
+              }}
+            >
+              <option value="" style={{ color: "#111827", backgroundColor: "#ffffff" }}>
+                Selecciona un equipo
+              </option>
+
+              {teams.map((team) => (
+                <option
+                  key={team.id}
+                  value={team.id}
+                  style={{ color: "#111827", backgroundColor: "#ffffff" }}
+                >
+                  {team.name.trim()} · {team.tier ?? "sin categoria"}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2"
+              style={{ color: "var(--color-text-subtle)" }}
+            />
+          </div>
 
           <button
             type="button"

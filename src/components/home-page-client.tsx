@@ -18,8 +18,17 @@ import type { ReactNode } from "react";
 import { PRIMARY_OWNER_NAME } from "@/lib/app-config";
 import { getUserDisplayName } from "@/lib/auth";
 import { getCountryFlagUrl } from "@/lib/country-flags";
+import { ThemeMascotOverlay } from "@/components/theme-mascot-overlay";
 import type { HomePageData, HomePageLeaderboardEntry, HomePageMatch } from "@/lib/homepage-data";
 import { useAuthUser } from "@/hooks/use-auth-user";
+import {
+  getThemeServerSnapshot,
+  getThemeSnapshot,
+  persistTheme,
+  subscribeToTheme,
+  themes,
+} from "@/lib/theme";
+import { normalizeMatchStatus } from "@/lib/match-status";
 
 function formatLocalKickoff(kickoffAt: string) {
   const date = new Date(kickoffAt);
@@ -38,78 +47,25 @@ function formatLocalKickoff(kickoffAt: string) {
 }
 
 function getMatchStatusLabel(status?: string) {
-  if (status === "live") {
+  const normalized = normalizeMatchStatus(status);
+
+  if (normalized === "live") {
     return "Live now";
   }
 
-  if (status === "completed") {
+  if (normalized === "completed") {
     return "Finished";
+  }
+
+  if (normalized === "cancelled") {
+    return "Cancelled";
   }
 
   return "Scheduled";
 }
 
-export const themes = [
-  { value: "standard", label: "Standard", borderColor: "rgba(148, 163, 184, 0.25)", textColor: "rgb(226, 232, 240)" },
-  { value: "canada", label: "Canada energy", borderColor: "rgba(248, 113, 113, 0.25)", textColor: "rgb(254, 226, 226)" },
-  { value: "usa", label: "USA lights", borderColor: "rgba(96, 165, 250, 0.25)", textColor: "rgb(219, 234, 254)" },
-  { value: "mexico", label: "Mexico spirit", borderColor: "rgba(74, 222, 128, 0.25)", textColor: "rgb(220, 252, 231)" },
-] as const;
-
-export const THEME_MASCOTS = {
-  standard: null,
-  canada: "/mascots/Maple.webp",
-  usa: "/mascots/Clutch.webp",
-  mexico: "/mascots/Zayu.webp",
-} as const;
-
-export type ThemeName = (typeof themes)[number]["value"];
-export const THEME_STORAGE_KEY = "selected-theme";
-export const THEME_CHANGE_EVENT = "selected-theme-change";
-
-
-
-export function isThemeName(value: string | null): value is ThemeName {
-  return value !== null && themes.some((option) => option.value === value);
-}
-
-export function getThemeSnapshot(): ThemeName {
-  if (typeof window === "undefined") {
-    return "standard";
-  }
-
-const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
-  return isThemeName(savedTheme) ? savedTheme : "standard";
-}
-
-export function getThemeServerSnapshot(): ThemeName {
-  return "standard";
-}
-
-export function subscribeToTheme(callback: () => void) {
-  if (typeof window === "undefined") {
-    return () => undefined;
-  }
-
-const handleThemeChange = () => callback();
-
-  window.addEventListener(THEME_CHANGE_EVENT, handleThemeChange);
-  window.addEventListener("storage", handleThemeChange);
-
-  return () => {
-    window.removeEventListener(THEME_CHANGE_EVENT, handleThemeChange);
-    window.removeEventListener("storage", handleThemeChange);
-  };
-}
-
-export function persistTheme(theme: ThemeName) {
-  window.localStorage.setItem(THEME_STORAGE_KEY, theme);
-  window.dispatchEvent(new Event(THEME_CHANGE_EVENT));
-}
-
 export function HomePageClient({ data }: { data: HomePageData }) {
   const theme = useSyncExternalStore(subscribeToTheme, getThemeSnapshot, getThemeServerSnapshot);
-  const mascot = THEME_MASCOTS[theme];
   const { user } = useAuthUser();
   const isPrimaryOwner = getUserDisplayName(user)?.trim().toLowerCase() === PRIMARY_OWNER_NAME.toLowerCase();
 
@@ -124,27 +80,7 @@ export function HomePageClient({ data }: { data: HomePageData }) {
       className="relative min-h-screen overflow-hidden"
       style={{ backgroundColor: "var(--color-primary)", color: "var(--color-text)" }}
     >
-      {/* Theme mascot */}
-{theme !== "standard" && (
-  <img
-    src={
-      theme === "canada"
-        ? "/mascots/Maple.webp"
-        : theme === "usa"
-        ? "/mascots/Clutch.webp"
-        : "/mascots/Zayu.webp"
-    }
-    alt="Theme mascot"
-    className="pointer-events-none fixed z-0"
-    style={{
-      top: "-10px",
-      left: "-140px",
-      width: "650px",
-      opacity: 0.80,
-      filter: "drop-shadow(0 0 40px rgba(0,0,0,0.35))",
-    }}
-  />
-)}
+      <ThemeMascotOverlay />
       <div className="absolute inset-0" style={{ backgroundImage: "var(--gradient-primary)" }} />
       <div
         className="absolute inset-x-0 top-[-8rem] h-[36rem] opacity-80 blur-3xl"
@@ -169,7 +105,7 @@ export function HomePageClient({ data }: { data: HomePageData }) {
       />
       <PitchLines />
 
-      <section className="relative mx-auto flex max-w-7xl flex-col gap-10 px-6 py-8 lg:px-10 lg:py-10">
+      <section className="relative z-10 mx-auto flex max-w-7xl flex-col gap-10 px-6 py-8 lg:px-10 lg:py-10">
         <nav
           className="flex items-center justify-between rounded-[2rem] px-5 py-4 backdrop-blur-2xl"
           style={{
@@ -638,7 +574,7 @@ function LeaderboardRow({ player }: { player: HomePageLeaderboardEntry }) {
         <div className="text-right">
           <p className="text-2xl font-black">{player.points}</p>
           <p className="text-xs" style={{ color: "var(--color-accent)" }}>
-            {player.trend} esta ronda
+            {player.trend} puntos hoy
           </p>
         </div>
       </div>

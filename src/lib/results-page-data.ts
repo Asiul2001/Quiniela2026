@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase";
 import { PRIMARY_LEAGUE_SLUG } from "@/lib/app-config";
+import { normalizeMatchStatus } from "@/lib/match-status";
 
 export type ResultsPrediction = {
   memberId: string;
@@ -198,7 +199,7 @@ list.push({
       stage: match.stage,
       kickoffAt: match.kickoff_at,
       venue: match.venue ?? "Sede por confirmar",
-      status: match.status,
+      status: normalizeMatchStatus(match.status),
       homeScore: match.home_score,
       awayScore: match.away_score,
       predictions: (predictionsByMatch.get(match.id) ?? []).sort((a, b) => {

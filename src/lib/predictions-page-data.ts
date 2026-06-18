@@ -595,7 +595,7 @@ export async function getPredictionsPageData(): Promise<PredictionsPageData> {
       };
     }
 
-    const [{ data: tournament }, { data: teams }, { data: matches }, { data: phaseDeadlines }, { data: bonusPredictions },] = await Promise.all([
+    const [{ data: tournament }, { data: teams }, { data: matches }, { data: phaseDeadlines }] = await Promise.all([
       client
         .from("tournaments")
         .select("name")
@@ -673,25 +673,24 @@ const teamOptions: TeamOptions[] = (teams ?? []).map((team) => ({
         });
       });
 
-return {
-  leagueId: league.id,
-  leagueName: league.name,
-  tournamentName: tournament?.name ?? fallbackBaseData.tournamentName,
-  tournamentId: leagueTournament.tournament_id,
-  teams: teamOptions,
-  matches: predictionMatches.length
-    ? mergeSupplementalRoundOf16(predictionMatches)
-    : (await getFallbackData()).matches,
-  initialPredictions: {},
-  bonusPredictions: (bonusPredictions ?? []).map((prediction) => ({
-  memberID: prediction.member_id,
-  type: prediction.type,
-  payload: prediction.payload ?? {},
-})),
-};
-
-} catch (error) {
-  console.error("Error fetching predictions page data:", error);
-  throw error;
-}
+    return {
+      leagueId: league.id,
+      leagueName: league.name,
+      tournamentName: tournament?.name ?? fallbackBaseData.tournamentName,
+      tournamentId: leagueTournament.tournament_id,
+      teams: teamOptions,
+      matches: predictionMatches.length
+        ? mergeSupplementalRoundOf16(predictionMatches)
+        : (await getFallbackData()).matches,
+      initialPredictions: {},
+      bonusPredictions: (bonusPredictions ?? []).map((prediction) => ({
+        memberId: prediction.member_id,
+        type: prediction.type,
+        payload: prediction.payload ?? {},
+      })),
+    };
+  } catch (error) {
+    console.error("Error fetching predictions page data:", error);
+    throw error;
+  }
 }

@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { CurrentUserIndicator } from "@/components/current-user-indicator";
+import { GlobalThemeEffects } from "@/components/global-theme-effects";
+import { SiteHeader } from "@/components/site-header";
 import "./globals.css";
-import { MobileNav } from "@/components/mobile-nav";
 
 export const metadata: Metadata = {
   title: "Quiniela Platform",
@@ -16,10 +15,13 @@ type RootLayoutProps = {
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="max-w-full overflow-x-hidden antialiased">
-<MobileNav />
-
-        {children}
+      <body
+        className="max-w-full overflow-x-hidden antialiased"
+        style={{ backgroundColor: "var(--color-primary)", color: "var(--color-text)" }}
+      >
+        <GlobalThemeEffects />
+        <SiteHeader />
+        <div className="relative z-20">{children}</div>
       </body>
     </html>
   );

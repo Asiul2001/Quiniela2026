@@ -1,9 +1,10 @@
 "use client";
 
 import { BonusPicksCard } from "@/components/bonus-pick-card";
-import { CalendarDays, Lock, PencilLine, Shield, Sparkles, TimerReset } from "lucide-react";
+import { ThemeMascotOverlay } from "@/components/theme-mascot-overlay";
+import { CalendarDays, ChevronDown, Lock, PencilLine, Shield, Sparkles, TimerReset } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ensureLeagueMembershipForUser, getUserDisplayName } from "@/lib/auth";
 import { getCountryFlagUrl } from "@/lib/country-flags";
 import { deleteLocalPrediction, getLocalPredictions, saveLocalPrediction } from "@/lib/local-predictions";
@@ -138,9 +139,6 @@ const roundOf32PreviewTemplates: RoundOf32PreviewTemplate[] = [
   { matchNumber: 87, kickoffDate: "2026-07-03", venue: "GEHA Field at Arrowhead Stadium", homeSlot: { kind: "position", slotCode: "K1" }, awaySlot: { kind: "bestThird", allowedGroupCodes: ["D", "E", "I", "J", "L"] } },
   { matchNumber: 88, kickoffDate: "2026-07-03", venue: "AT&T Stadium", homeSlot: { kind: "position", slotCode: "D2" }, awaySlot: { kind: "position", slotCode: "G2" } },
 ];
-
-type ThemeName = "standard" | "canada" | "usa" | "mexico";
-
 type ScoreDraft = {
   home: string;
   away: string;
@@ -256,14 +254,6 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
   const [memberId, setMemberId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, ScoreDraft>>(data.initialPredictions);
   const [existingPredictionIds, setExistingPredictionIds] = useState<Record<string, boolean>>(defaultPredictionIds);
-  const [theme, setTheme] = useState<ThemeName>(() => {
-    if (typeof window === "undefined") {
-      return "standard";
-    }
-
-    const savedTheme = window.localStorage.getItem("selected-theme") as ThemeName | null;
-    return savedTheme ?? "standard";
-  });
   const [savingMatchId, setSavingMatchId] = useState<string | null>(null);
   const [savedMatchIds, setSavedMatchIds] = useState<Record<string, boolean>>(defaultPredictionIds);
   const [searchQuery, setSearchQuery] = useState("");
@@ -277,11 +267,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
   const [now, setNow] = useState(() => Date.now());
   const [remoteSyncAvailable, setRemoteSyncAvailable] = useState(Boolean(supabase));
   const [remoteSyncError, setRemoteSyncError] = useState<string | null>(null);
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem("selected-theme", theme);
-  }, [theme]);
+  const toastIdRef = useRef(0);
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 30000);
@@ -406,7 +392,8 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
   }, [currentUser, currentUserName, data.initialPredictions, data.leagueId, defaultPredictionIds]);
 
   function showToast(message: string, type: Toast["type"]) {
-    const toastId = Date.now() + Math.floor(Math.random() * 1000);
+    toastIdRef.current += 1;
+    const toastId = toastIdRef.current;
     setToasts((current) => [...current, { id: toastId, message, type }]);
     window.setTimeout(() => {
       setToasts((current) => current.filter((toast) => toast.id !== toastId));
@@ -1069,6 +1056,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
       className="relative min-h-screen overflow-hidden"
       style={{ backgroundColor: "var(--color-primary)", color: "var(--color-text)" }}
     >
+      <ThemeMascotOverlay />
       <div className="absolute inset-0" style={{ backgroundImage: "var(--gradient-primary)" }} />
       <div
         className="absolute inset-x-0 top-[-8rem] h-[34rem] opacity-80 blur-3xl"
@@ -1078,7 +1066,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
         }}
       />
 
-      <section className="relative mx-auto flex max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
+      <section className="relative z-10 mx-auto flex max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
         <nav
           className="flex flex-wrap items-center justify-between gap-4 rounded-[2rem] px-5 py-4 backdrop-blur-2xl"
           style={{
@@ -1266,40 +1254,49 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                 </p>
               </div>
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-                <label className="block">
+                <label className="block relative">
                   <span className="sr-only">Estado</span>
                   <select
                     value={statusFilter}
                     onChange={(event) => setStatusFilter(event.target.value as MatchStatusFilter)}
-                    className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-white outline-none transition duration-200"
+                    className="w-full appearance-none rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 pr-10 text-sm text-white outline-none transition duration-200"
                   >
                     <option value="all">Todos los estados</option>
                     <option value="unanswered">Sin respuesta</option>
                     <option value="saved">Guardados</option>
                   </select>
+                  <ChevronDown
+                    className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300"
+                  />
                 </label>
-                <label className="block">
+                <label className="block relative">
                   <span className="sr-only">Orden</span>
                   <select
                     value={viewMode}
                     onChange={(event) => setViewMode(event.target.value as ViewMode)}
-                    className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-white outline-none transition duration-200"
+                    className="w-full appearance-none rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 pr-10 text-sm text-white outline-none transition duration-200"
                   >
                     <option value="date">Fecha / jornada</option>
                     <option value="group">Grupo</option>
                   </select>
+                  <ChevronDown
+                    className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300"
+                  />
                 </label>
-                <label className="block">
+                <label className="block relative">
                   <span className="sr-only">Densidad</span>
                   <select
                     value={densityMode}
                     onChange={(event) => setDensityMode(event.target.value as DensityMode)}
-                    className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 text-sm text-white outline-none transition duration-200"
+                    className="w-full appearance-none rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 pr-10 text-sm text-white outline-none transition duration-200"
                   >
                     <option value="wide">Vista amplia</option>
                     <option value="compact">Vista compacta</option>
 
                   </select>
+                  <ChevronDown
+                    className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300"
+                  />
                 </label>
                 <label className="block">
                   <span className="sr-only">Buscar partido</span>
@@ -1439,7 +1436,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                                           );
                                         })()}
 
-                                        <div className="grid items-center gap-4 sm:grid-cols-[1fr_auto_1fr]">
+                                        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 sm:gap-4">
                                           <TeamPanel name={match.home} align="right" />
                                           <div
                                             className="mx-auto rounded-full px-3 py-1 text-xs font-bold"
@@ -1647,7 +1644,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                                       </span>
                                     </div>
 
-                                    <div className="grid items-center gap-4 sm:grid-cols-[1fr_auto_1fr]">
+                                    <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 sm:gap-4">
                                       <TeamPanel name={match.home} align="right" />
                                       <div
                                         className="mx-auto rounded-full px-3 py-1 text-xs font-bold"
@@ -1771,8 +1768,8 @@ function TeamPanel({ name, align }: { name: string; align: "left" | "right" }) {
   const alignmentClasses = align === "right" ? "justify-end" : "justify-start";
 
   return (
-    <div className={align === "right" ? "text-right" : "text-left"}>
-      <div className={`flex items-center ${alignmentClasses} gap-2`}>
+    <div className={`min-w-0 ${align === "right" ? "text-right" : "text-left"}`}>
+      <div className={`flex min-w-0 items-center ${alignmentClasses} gap-2`}>
         {flagUrl ? (
           <img
             src={flagUrl}
@@ -1782,7 +1779,12 @@ function TeamPanel({ name, align }: { name: string; align: "left" | "right" }) {
             height={24}
           />
         ) : null}
-        <p className="text-xl font-black text-white sm:text-2xl">{name}</p>
+        <p
+          title={name}
+          className="min-w-0 truncate text-base font-black text-white sm:text-2xl"
+        >
+          {name}
+        </p>
       </div>
       <p className="mt-1 text-xs uppercase tracking-[0.18em]" style={{ color: "var(--color-text-subtle)" }}>
         Equipo
@@ -1845,7 +1847,7 @@ function CompactTeamRow({
   const textAlign = align === "right" ? "text-right" : "text-left";
 
   return (
-    <div className={textAlign}>
+    <div className={`min-w-0 ${textAlign}`}>
       <div className={`flex items-center ${justify} gap-2`}>
         {flagUrl ? (
           <img
@@ -1856,9 +1858,12 @@ function CompactTeamRow({
             height={16}
           />
         ) : null}
-        <span className="text-sm font-black text-white sm:text-[15px]">
-  {getTeamCode(name)}
-</span>
+        <span
+          title={name}
+          className="min-w-0 truncate text-xs font-black text-white sm:text-[13px]"
+        >
+          {name}
+        </span>
       </div>
     </div>
   );
@@ -1875,7 +1880,7 @@ function PreviewSlotLabel({
   const flagUrl = getCountryFlagUrl(name);
 
   return (
-    <div className={align === "right" ? "text-right" : "text-left"}>
+    <div className={`min-w-0 ${align === "right" ? "text-right" : "text-left"}`}>
       <div
         className={`flex items-center gap-2 ${
           align === "right" ? "justify-end" : "justify-start"
@@ -1889,8 +1894,11 @@ function PreviewSlotLabel({
           />
         ) : null}
 
-        <span className="text-xs font-black leading-4 text-white">
-          {isRealTeam ? getTeamCode(name) : name}
+        <span
+          title={name}
+          className="min-w-0 truncate text-xs font-black leading-4 text-white"
+        >
+          {name}
         </span>
       </div>
     </div>
@@ -1956,7 +1964,7 @@ function CompactPredictionCard({
       backgroundColor: "rgba(255, 255, 255, 0.045)",
     }}
   >
-    <div className="grid grid-cols-[4.8rem_4.5rem_5.5rem_4.5rem_3.5rem] items-center gap-2 text-xs">
+    <div className="grid grid-cols-[4rem_minmax(0,1fr)_5.5rem_minmax(0,1fr)_auto] items-center gap-2 text-xs">
       <div style={{ color: "var(--color-text-subtle)" }}>
         <div>{timing.date}</div>
         <div>{timing.time}</div>
