@@ -595,7 +595,13 @@ export async function getPredictionsPageData(): Promise<PredictionsPageData> {
       };
     }
 
-    const [{ data: tournament }, { data: teams }, { data: matches }, { data: phaseDeadlines }] = await Promise.all([
+    const [
+      { data: tournament },
+      { data: teams },
+      { data: matches },
+      { data: phaseDeadlines },
+      { data: bonusPredictions },
+    ] = await Promise.all([
       client
         .from("tournaments")
         .select("name")
