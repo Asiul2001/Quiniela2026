@@ -238,6 +238,195 @@ const supplementalRoundOf16Fixtures: Array<{
   },
 ];
 
+const fallbackRoundOf32OfficialFixtures: Array<{
+  id: string;
+  stage: Stage;
+  roundNumber: number | null;
+  matchNumber: number;
+  home: string;
+  away: string;
+  kickoffAt: string;
+  venue: string;
+  status: "scheduled" | "live" | "completed" | "cancelled";
+}> = [
+  {
+    id: "fallback-round-of-32-73",
+    stage: "round_of_32",
+    roundNumber: null,
+    matchNumber: 73,
+    home: "Canada",
+    away: "South Africa",
+    kickoffAt: "2026-06-28T17:00:00Z",
+    venue: "SoFi Stadium",
+    status: "completed",
+  },
+  {
+    id: "fallback-round-of-32-74",
+    stage: "round_of_32",
+    roundNumber: null,
+    matchNumber: 74,
+    home: "Brazil",
+    away: "Japan",
+    kickoffAt: "2026-06-29T17:00:00Z",
+    venue: "NRG Stadium",
+    status: "scheduled",
+  },
+  {
+    id: "fallback-round-of-32-75",
+    stage: "round_of_32",
+    roundNumber: null,
+    matchNumber: 75,
+    home: "Germany",
+    away: "Paraguay",
+    kickoffAt: "2026-06-29T20:30:00Z",
+    venue: "Gillette Stadium",
+    status: "scheduled",
+  },
+  {
+    id: "fallback-round-of-32-76",
+    stage: "round_of_32",
+    roundNumber: null,
+    matchNumber: 76,
+    home: "Netherlands",
+    away: "Morocco",
+    kickoffAt: "2026-06-30T01:00:00Z",
+    venue: "Estadio BBVA",
+    status: "scheduled",
+  },
+  {
+    id: "fallback-round-of-32-77",
+    stage: "round_of_32",
+    roundNumber: null,
+    matchNumber: 77,
+    home: "Ivory Coast",
+    away: "Norway",
+    kickoffAt: "2026-06-30T17:00:00Z",
+    venue: "AT&T Stadium",
+    status: "scheduled",
+  },
+  {
+    id: "fallback-round-of-32-78",
+    stage: "round_of_32",
+    roundNumber: null,
+    matchNumber: 78,
+    home: "France",
+    away: "Sweden",
+    kickoffAt: "2026-06-30T21:00:00Z",
+    venue: "MetLife Stadium",
+    status: "scheduled",
+  },
+  {
+    id: "fallback-round-of-32-79",
+    stage: "round_of_32",
+    roundNumber: null,
+    matchNumber: 79,
+    home: "Mexico",
+    away: "Ecuador",
+    kickoffAt: "2026-07-01T01:00:00Z",
+    venue: "Estadio Azteca",
+    status: "scheduled",
+  },
+  {
+    id: "fallback-round-of-32-80",
+    stage: "round_of_32",
+    roundNumber: null,
+    matchNumber: 80,
+    home: "England",
+    away: "DR Congo",
+    kickoffAt: "2026-07-01T16:00:00Z",
+    venue: "Mercedes-Benz Stadium",
+    status: "scheduled",
+  },
+  {
+    id: "fallback-round-of-32-81",
+    stage: "round_of_32",
+    roundNumber: null,
+    matchNumber: 81,
+    home: "Belgium",
+    away: "Senegal",
+    kickoffAt: "2026-07-01T20:00:00Z",
+    venue: "Lumen Field",
+    status: "scheduled",
+  },
+  {
+    id: "fallback-round-of-32-82",
+    stage: "round_of_32",
+    roundNumber: null,
+    matchNumber: 82,
+    home: "United States",
+    away: "Bosnia and Herzegovina",
+    kickoffAt: "2026-07-02T00:00:00Z",
+    venue: "Levi's Stadium",
+    status: "scheduled",
+  },
+  {
+    id: "fallback-round-of-32-83",
+    stage: "round_of_32",
+    roundNumber: null,
+    matchNumber: 83,
+    home: "Spain",
+    away: "Austria",
+    kickoffAt: "2026-07-02T19:00:00Z",
+    venue: "SoFi Stadium",
+    status: "scheduled",
+  },
+  {
+    id: "fallback-round-of-32-84",
+    stage: "round_of_32",
+    roundNumber: null,
+    matchNumber: 84,
+    home: "Portugal",
+    away: "Croatia",
+    kickoffAt: "2026-07-02T23:00:00Z",
+    venue: "BMO Field",
+    status: "scheduled",
+  },
+  {
+    id: "fallback-round-of-32-85",
+    stage: "round_of_32",
+    roundNumber: null,
+    matchNumber: 85,
+    home: "Switzerland",
+    away: "Algeria",
+    kickoffAt: "2026-07-03T03:00:00Z",
+    venue: "BC Place",
+    status: "scheduled",
+  },
+  {
+    id: "fallback-round-of-32-86",
+    stage: "round_of_32",
+    roundNumber: null,
+    matchNumber: 86,
+    home: "Australia",
+    away: "Egypt",
+    kickoffAt: "2026-07-03T18:00:00Z",
+    venue: "AT&T Stadium",
+    status: "scheduled",
+  },
+  {
+    id: "fallback-round-of-32-87",
+    stage: "round_of_32",
+    roundNumber: null,
+    matchNumber: 87,
+    home: "Argentina",
+    away: "Cabo Verde",
+    kickoffAt: "2026-07-03T22:00:00Z",
+    venue: "Hard Rock Stadium",
+    status: "scheduled",
+  },
+  {
+    id: "fallback-round-of-32-88",
+    stage: "round_of_32",
+    roundNumber: null,
+    matchNumber: 88,
+    home: "Colombia",
+    away: "Ghana",
+    kickoffAt: "2026-07-04T01:30:00Z",
+    venue: "GEHA Field at Arrowhead Stadium",
+    status: "scheduled",
+  },
+];
+
 function hasSupabaseEnv() {
   return hasSupabaseClientEnv && supabase !== null;
 }
@@ -349,6 +538,32 @@ function mergeSupplementalRoundOf16(matches: PredictionEntryMatch[]) {
         ...fixture,
         groupLabel: null,
         status: "scheduled",
+      }),
+    );
+
+  return [...matches, ...supplementalMatches].sort(
+    (left, right) => new Date(left.kickoffAt).getTime() - new Date(right.kickoffAt).getTime(),
+  );
+}
+
+function mergeFallbackRoundOf32Fixtures(matches: PredictionEntryMatch[]) {
+  const existingMatchNumbers = new Set(
+    matches
+      .map((match) => match.matchNumber)
+      .filter((matchNumber): matchNumber is number => matchNumber !== null),
+  );
+  const hasRoundOf32 = matches.some((match) => match.stageKey === "round_of_32");
+
+  if (hasRoundOf32) {
+    return matches;
+  }
+
+  const supplementalMatches = fallbackRoundOf32OfficialFixtures
+    .filter((fixture) => !existingMatchNumbers.has(fixture.matchNumber))
+    .map((fixture) =>
+      createPredictionEntryMatch({
+        ...fixture,
+        groupLabel: null,
       }),
     );
 
@@ -544,7 +759,7 @@ async function loadSeedFallbackMatches(): Promise<PredictionEntryMatch[]> {
     });
   });
 
-  return mergeSupplementalRoundOf16(parsedMatches);
+  return mergeSupplementalRoundOf16(mergeFallbackRoundOf32Fixtures(parsedMatches));
 }
 
 async function getFallbackData(): Promise<PredictionsPageData> {
@@ -555,7 +770,7 @@ async function getFallbackData(): Promise<PredictionsPageData> {
   const matches = await seedFallbackMatchesPromise;
   return {
     ...fallbackBaseData,
-    matches,
+    matches: mergeFallbackRoundOf32Fixtures(matches),
   };
 }
 
@@ -686,7 +901,7 @@ const teamOptions: TeamOptions[] = (teams ?? []).map((team) => ({
       tournamentId: leagueTournament.tournament_id,
       teams: teamOptions,
       matches: predictionMatches.length
-        ? mergeSupplementalRoundOf16(predictionMatches)
+        ? mergeSupplementalRoundOf16(mergeFallbackRoundOf32Fixtures(predictionMatches))
         : (await getFallbackData()).matches,
       initialPredictions: {},
       bonusPredictions: (bonusPredictions ?? []).map((prediction) => ({

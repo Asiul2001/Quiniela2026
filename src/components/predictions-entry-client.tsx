@@ -54,6 +54,11 @@ function isPlaceholderKnockoutLabel(name: string) {
   return /winner match/i.test(name);
 }
 
+function extractWinnerMatchNumber(name: string) {
+  const match = name.match(/winner match\s*(\d+)/i);
+  return match ? Number(match[1]) : null;
+}
+
 function extractGroupCode(groupTitle: string) {
   const match = groupTitle.match(/(?:group|grupo)\s*([A-Z])/i);
   return match?.[1]?.toUpperCase() ?? null;
@@ -154,7 +159,7 @@ type DensityMode = "wide" | "compact";
 type MatchStatusFilter = "all" | "unanswered" | "saved";
 type StageFilter = "all" | "group" | "roundOf32";
 
-type PageTab = "predictions" | "roundOf32Preview";
+type PageTab = "predictions" | "roundOf32Preview" | "roundOf16Preview";
 
 type Toast = {
   id: number;
@@ -945,6 +950,95 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
     return Array.from(groups.values());
   }, [officialRoundOf32Matches]);
 
+  const predictedRoundOf32Winners = useMemo(() => {
+    const winners = new Map<number, string>();
+
+    for (const match of officialRoundOf32Matches) {
+      if (match.matchNumber === null) {
+        continue;
+      }
+
+      const draft = drafts[match.id];
+      const homeScore = draft?.home ? Number(draft.home) : NaN;
+      const awayScore = draft?.away ? Number(draft.away) : NaN;
+
+      if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore)) {
+        continue;
+      }
+
+      if (homeScore > awayScore) {
+        winners.set(match.matchNumber, match.home);
+        continue;
+      }
+
+      if (awayScore > homeScore) {
+        winners.set(match.matchNumber, match.away);
+        continue;
+      }
+
+      if (draft?.penaltyWinner === "home") {
+        winners.set(match.matchNumber, match.home);
+      } else if (draft?.penaltyWinner === "away") {
+        winners.set(match.matchNumber, match.away);
+      }
+    }
+
+    return winners;
+  }, [drafts, officialRoundOf32Matches]);
+
+  const roundOf16PreviewMatches = useMemo<RoundOf32PreviewMatch[]>(() => {
+    return data.matches
+      .filter((match) => match.stageKey === "round_of_16")
+      .sort((a, b) => new Date(a.kickoffAt).getTime() - new Date(b.kickoffAt).getTime())
+      .map((match) => {
+        const homeSourceMatch = extractWinnerMatchNumber(match.home);
+        const awaySourceMatch = extractWinnerMatchNumber(match.away);
+
+        const resolvedHome =
+          homeSourceMatch !== null
+            ? predictedRoundOf32Winners.get(homeSourceMatch) ?? match.home
+            : match.home;
+        const resolvedAway =
+          awaySourceMatch !== null
+            ? predictedRoundOf32Winners.get(awaySourceMatch) ?? match.away
+            : match.away;
+
+        return {
+          id: `round-of-16-preview-${match.id}`,
+          matchNumber: match.matchNumber ?? 0,
+          stageLabel: match.stage,
+          sectionDateLabel: formatSectionDateLabel(match.kickoffAt),
+          dateLabel: formatLocalMatchDateLabel(match.kickoffAt),
+          timeLabel: formatLocalMatchTime(match.kickoffAt).time,
+          venue: match.venue,
+          home: resolvedHome,
+          away: resolvedAway,
+          note: "Cruce proyectado segun los ganadores que se desprenden de tus pronosticos de dieciseisavos.",
+        };
+      });
+  }, [data.matches, predictedRoundOf32Winners]);
+
+  const groupedRoundOf16Preview = useMemo(() => {
+    const groups = new Map<string, { title: string; subtitle: string; matches: RoundOf32PreviewMatch[] }>();
+
+    for (const match of roundOf16PreviewMatches) {
+      const existing = groups.get(match.sectionDateLabel);
+
+      if (existing) {
+        existing.matches.push(match);
+        continue;
+      }
+
+      groups.set(match.sectionDateLabel, {
+        title: "Octavos",
+        subtitle: match.sectionDateLabel,
+        matches: [match],
+      });
+    }
+
+    return Array.from(groups.values());
+  }, [roundOf16PreviewMatches]);
+
   function updateDraft(matchId: string, side: "home" | "away", value: string) {
     if (value !== "" && !/^\d+$/.test(value)) return;
 
@@ -1315,6 +1409,17 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                 >
                   Vista previa de dieciseisavos
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setPageTab("roundOf16Preview")}
+                  className="rounded-full px-4 py-2 text-sm font-semibold transition duration-200"
+                  style={{
+                    backgroundColor: pageTab === "roundOf16Preview" ? "color-mix(in srgb, var(--color-accent) 16%, transparent)" : "transparent",
+                    color: "var(--color-text)",
+                  }}
+                >
+                  Vista previa de octavos
+                </button>
               </div>
             </div>
           </div>
@@ -1653,7 +1758,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                     )}
                   </section>
               </>
-          ) : (
+          ) : pageTab === "roundOf32Preview" ? (
                 <section className="grid gap-8">
                   <div
                     className="rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-lg shadow-black/10"
@@ -1851,6 +1956,65 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                               </article>
                             );
                           })}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </section>
+              ) : (
+                <section className="grid gap-8">
+                  <div
+                    className="rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-lg shadow-black/10"
+                    style={{ backgroundColor: "rgba(255, 255, 255, 0.06)" }}
+                  >
+                    <div className="flex flex-col gap-2">
+                      <p className="text-sm font-semibold uppercase tracking-[0.24em]" style={{ color: "var(--color-text-subtle)" }}>
+                        Vista previa
+                      </p>
+                      <h2 className="text-2xl font-black text-white">Asi se verian los octavos</h2>
+                      <p className="text-sm leading-6" style={{ color: "var(--color-text-subtle)" }}>
+                        Esta pestaña toma los ganadores que se desprenden de tus pronosticos de dieciseisavos y arma automaticamente la siguiente ronda.
+                      </p>
+                    </div>
+                  </div>
+
+                  {groupedRoundOf16Preview.length === 0 ? (
+                    <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-center text-slate-300">
+                      Completa tus pronosticos de dieciseisavos para ver como se formarian los octavos.
+                    </div>
+                  ) : (
+                    groupedRoundOf16Preview.map((group) => (
+                      <div key={`round16-${group.subtitle}`} className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p
+                              className="text-xs font-semibold uppercase tracking-[0.24em]"
+                              style={{ color: "var(--color-text-subtle)" }}
+                            >
+                              {group.title}
+                            </p>
+                            <h2 className="text-2xl font-black text-white">{group.subtitle}</h2>
+                          </div>
+
+                          <p className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
+                            {group.matches.length} partidos
+                          </p>
+                        </div>
+
+                        <div
+                          className={
+                            densityMode === "compact"
+                              ? "grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
+                              : "grid gap-5 xl:grid-cols-2"
+                          }
+                        >
+                          {group.matches.map((match) =>
+                            densityMode === "compact" ? (
+                              <CompactPreviewCard key={match.id} match={match} />
+                            ) : (
+                              <PreviewProjectionCard key={match.id} match={match} />
+                            ),
+                          )}
                         </div>
                       </div>
                     ))
@@ -2545,6 +2709,73 @@ return (
     </div>
   </article>
 );
+}
+
+function PreviewProjectionCard({ match }: { match: RoundOf32PreviewMatch }) {
+  return (
+    <article
+      className="rounded-[2rem] p-5"
+      style={{
+        border: "1px solid var(--color-border-accent)",
+        backgroundColor: "rgba(255, 255, 255, 0.05)",
+        boxShadow: "0 24px 56px rgba(0, 0, 0, 0.22)",
+      }}
+    >
+      <div className="space-y-6">
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <span
+              className="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]"
+              style={{
+                border: "1px solid var(--color-border-accent)",
+                backgroundColor: "rgba(255, 255, 255, 0.08)",
+                color: "var(--color-text-subtle)",
+              }}
+            >
+              {match.stageLabel}
+            </span>
+            <span className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
+              {match.dateLabel} - {match.timeLabel}
+            </span>
+            <span className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
+              {match.venue?.trim() || "Sede por confirmar"}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 sm:gap-4">
+            <TeamPanel name={match.home} align="right" />
+            <div
+              className="mx-auto rounded-full px-3 py-1 text-xs font-bold"
+              style={{
+                border: "1px solid var(--color-border-accent)",
+                backgroundColor: "rgba(255, 255, 255, 0.1)",
+                color: "var(--color-text-subtle)",
+              }}
+            >
+              VS
+            </div>
+            <TeamPanel name={match.away} align="left" />
+          </div>
+        </div>
+
+        <div
+          className="rounded-[1.6rem] p-4"
+          style={{
+            border: "1px solid var(--color-border-accent)",
+            backgroundColor: "color-mix(in srgb, var(--color-secondary) 74%, transparent)",
+          }}
+        >
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-semibold">Cruce proyectado</p>
+            <StatusChip tone="preview">No editable</StatusChip>
+          </div>
+          <p className="text-xs leading-6" style={{ color: "var(--color-text-subtle)" }}>
+            {match.note}
+          </p>
+        </div>
+      </div>
+    </article>
+  );
 }
 
 function ScoreInput({
