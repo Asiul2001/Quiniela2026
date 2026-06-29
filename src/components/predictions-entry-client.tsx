@@ -950,6 +950,33 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
     return Array.from(groups.values());
   }, [officialRoundOf32Matches]);
 
+  const pairedRoundOf32Matches = useMemo(() => {
+    const previewByMatchNumber = new Map(
+      roundOf32PreviewMatches.map((match) => [match.matchNumber, match] as const),
+    );
+
+    const officialByMatchNumber = new Map(
+      officialRoundOf32Matches
+        .filter((match) => match.matchNumber !== null)
+        .map((match) => [match.matchNumber as number, match] as const),
+    );
+
+    const orderedMatchNumbers = Array.from(
+      new Set([
+        ...roundOf32PreviewMatches.map((match) => match.matchNumber),
+        ...officialRoundOf32Matches
+          .map((match) => match.matchNumber)
+          .filter((matchNumber): matchNumber is number => matchNumber !== null),
+      ]),
+    ).sort((a, b) => a - b);
+
+    return orderedMatchNumbers.map((matchNumber) => ({
+      matchNumber,
+      preview: previewByMatchNumber.get(matchNumber) ?? null,
+      official: officialByMatchNumber.get(matchNumber) ?? null,
+    }));
+  }, [officialRoundOf32Matches, roundOf32PreviewMatches]);
+
   const predictedRoundOf32Winners = useMemo(() => {
     const winners = new Map<number, string>();
 
@@ -1775,194 +1802,88 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                     </div>
                   </div>
 
-                  <div className="grid gap-6">
-                  {groupedOfficialRoundOf32Matches.length > 0 ? (
-                    <div className="space-y-6">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p
-                            className="text-xs font-semibold uppercase tracking-[0.24em]"
-                            style={{ color: "var(--color-text-subtle)" }}
-                          >
-                            Partidos oficiales
-                          </p>
-                          <h2 className="text-2xl font-black text-white">Pronostica esta ronda</h2>
-                        </div>
-                        <p className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
-                          {officialRoundOf32Matches.length} partidos
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: "var(--color-text-subtle)" }}>
+                          Resultado proyectado vs partido real
                         </p>
+                        <h2 className="text-2xl font-black text-white">Cada llave al lado de su partido</h2>
                       </div>
+                      <p className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
+                        {pairedRoundOf32Matches.length} cruces
+                      </p>
+                    </div>
 
-                      <div className="grid gap-6">
-                        {groupedOfficialRoundOf32Matches.map((group) => (
-                          <div key={`official-${group.subtitle}`} className="space-y-4">
-                            <div className="flex items-center justify-between">
-                              <h3 className="text-xl font-black text-white">{group.subtitle}</h3>
-                              <p className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
-                                {group.matches.length} partidos
-                              </p>
-                            </div>
-                            <div className={densityMode === "compact" ? "grid gap-2" : "grid gap-5"}>
-                              {group.matches.map((match) => {
-                                const draft = drafts[match.id] ?? { home: "", away: "", penaltyWinner: "" };
-                                const isSaving = savingMatchId === match.id;
-                                const isSaved = Boolean(savedMatchIds[match.id]);
+                    {pairedRoundOf32Matches.length === 0 ? (
+                      <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-center text-slate-300">
+                        Todavia no hay cruces para mostrar en esta ronda.
+                      </div>
+                    ) : (
+                      <div className="space-y-8">
+                        {pairedRoundOf32Matches.map(({ matchNumber, preview, official }) => {
+                          const draft = official ? drafts[official.id] ?? { home: "", away: "", penaltyWinner: "" } : null;
+                          const isSaving = official ? savingMatchId === official.id : false;
+                          const isSaved = official ? Boolean(savedMatchIds[official.id]) : false;
 
-                                if (densityMode === "compact") {
-                                  return (
+                          return (
+                            <div key={`pair-${matchNumber}`} className="grid gap-6 xl:grid-cols-2">
+                              <div className="space-y-3">
+                                <p className="text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: "var(--color-text-subtle)" }}>
+                                  Resultado proyectado
+                                </p>
+                                {preview ? (
+                                  densityMode === "compact" ? (
+                                    <CompactPreviewCard match={preview} />
+                                  ) : (
+                                    <PreviewProjectionCard match={preview} />
+                                  )
+                                ) : (
+                                  <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 text-sm text-slate-300">
+                                    Aun no hay cruce proyectado para este partido.
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="space-y-3">
+                                <p className="text-xs font-semibold uppercase tracking-[0.24em]" style={{ color: "var(--color-text-subtle)" }}>
+                                  Partido real
+                                </p>
+                                {official && draft ? (
+                                  densityMode === "compact" ? (
                                     <CompactPredictionCard
-                                      key={match.id}
-                                      match={match}
+                                      match={official}
                                       draft={draft}
                                       isSaved={isSaved}
                                       isSaving={isSaving}
-                                      onHomeChange={(value) => updateDraft(match.id, "home", value)}
-                                      onAwayChange={(value) => updateDraft(match.id, "away", value)}
-                                      onPenaltyWinnerChange={(value) => updatePenaltyWinner(match.id, value)}
-                                      onSave={() => savePrediction(match.id)}
+                                      onHomeChange={(value) => updateDraft(official.id, "home", value)}
+                                      onAwayChange={(value) => updateDraft(official.id, "away", value)}
+                                      onPenaltyWinnerChange={(value) => updatePenaltyWinner(official.id, value)}
+                                      onSave={() => savePrediction(official.id)}
                                     />
-                                  );
-                                }
-
-                                return (
-                                  <DetailedPredictionCard
-                                    key={match.id}
-                                    match={match}
-                                    draft={draft}
-                                    isSaved={isSaved}
-                                    isSaving={isSaving}
-                                    onHomeChange={(value) => updateDraft(match.id, "home", value)}
-                                    onAwayChange={(value) => updateDraft(match.id, "away", value)}
-                                    onPenaltyWinnerChange={(value) => updatePenaltyWinner(match.id, value)}
-                                    onSave={() => savePrediction(match.id)}
-                                  />
-                                );
-                              })}
+                                  ) : (
+                                    <DetailedPredictionCard
+                                      match={official}
+                                      draft={draft}
+                                      isSaved={isSaved}
+                                      isSaving={isSaving}
+                                      onHomeChange={(value) => updateDraft(official.id, "home", value)}
+                                      onAwayChange={(value) => updateDraft(official.id, "away", value)}
+                                      onPenaltyWinnerChange={(value) => updatePenaltyWinner(official.id, value)}
+                                      onSave={() => savePrediction(official.id)}
+                                    />
+                                  )
+                                ) : (
+                                  <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 text-sm text-slate-300">
+                                    Aun no hay partido oficial cargado para este cruce.
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
-                    </div>
-                  ) : null}
-
-                  <div className="space-y-6">
-                  {groupedRoundOf32Preview.length === 0 ? (
-                    <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-center text-slate-300">
-                      Completa mas pronosticos de grupos para ver la simulacion de esta ronda.
-                    </div>
-                  ) : (
-                    groupedRoundOf32Preview.map((group) => (
-                      <div key={`$Resultado proyectado-${group.subtitle}`} className="space-y-4">
-                        <div className="flex items-center justify-between">
-                        <div>
-                          <p
-                            className="text-xs font-semibold uppercase tracking-[0.24em]"
-                            style={{ color: "var(--color-text-subtle)" }}
-                          >
-                            Resultado proyectado
-                          </p>
-
-                          {densityMode !== "compact" ? (
-                            <h2 className="text-2xl font-black text-white">{group.subtitle}</h2>
-                          ) : null}
-                        </div>
-
-                        <p className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
-                          {group.matches.length} partidos
-                        </p>
-                      </div>
-                        <div
-                          className={
-                            densityMode === "compact"
-                              ? "grid gap-3 sm:grid-cols-2"
-                              : "grid gap-5"
-                          }
-                        >
-                          {group.matches.map((match) => {
-                            if (densityMode === "compact") {
-                              return <CompactPreviewCard key={match.id} match={match} />;
-                            }
-
-                            return (
-                              <article
-                                key={match.id}
-                                className="rounded-[2rem] p-5"
-                                style={{
-                                  border: "1px solid var(--color-border-accent)",
-                                  backgroundColor: "rgba(255, 255, 255, 0.05)",
-                                  boxShadow: "0 24px 56px rgba(0, 0, 0, 0.22)",
-                                }}
-                              >
-                                <div className="space-y-6">
-                                  <div className="space-y-4">
-                                    <div className="flex flex-wrap items-center gap-3">
-                                      <span
-                                        className="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]"
-                                        style={{
-                                          border: "1px solid var(--color-border-accent)",
-                                          backgroundColor: "rgba(255, 255, 255, 0.08)",
-                                          color: "var(--color-text-subtle)",
-                                        }}
-                                      >
-                                        {match.stageLabel}
-                                      </span>
-                                      <span className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
-                                        {match.dateLabel} - {match.timeLabel}
-                                      </span>
-                                      <span className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
-                                        {match.venue?.trim() || "Sede por confirmar"}
-                                      </span>
-                                    </div>
-
-                                    <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 sm:gap-4">
-                                      <TeamPanel name={match.home} align="right" />
-                                      <div
-                                        className="mx-auto rounded-full px-3 py-1 text-xs font-bold"
-                                        style={{
-                                          border: "1px solid var(--color-border-accent)",
-                                          backgroundColor: "rgba(255, 255, 255, 0.1)",
-                                          color: "var(--color-text-subtle)",
-                                        }}
-                                      >
-                                        VS
-                                      </div>
-                                      <TeamPanel name={match.away} align="left" />
-                                    </div>
-                                  </div>
-
-                                  <div
-                                    className="rounded-[1.6rem] p-4"
-                                    style={{
-                                      border: "1px solid var(--color-border-accent)",
-                                      backgroundColor: "color-mix(in srgb, var(--color-secondary) 74%, transparent)",
-                                    }}
-                                  >
-                                    <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                                      <p className="text-sm font-semibold">Cruce proyectado</p>
-                                      <span
-                                        className="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em]"
-                                        style={{
-                                          border: "1px solid rgba(251, 191, 36, 0.28)",
-                                          backgroundColor: "rgba(245, 158, 11, 0.14)",
-                                          color: "rgb(254, 240, 138)",
-                                        }}
-                                      >
-                                        No editable
-                                      </span>
-                                    </div>
-                                    <p className="text-xs leading-6" style={{ color: "var(--color-text-subtle)" }}>
-                                      {match.note}
-                                    </p>
-                                  </div>
-                                </div>
-                              </article>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                  </div>
+                    )}
                   </div>
                 </section>
               ) : (
