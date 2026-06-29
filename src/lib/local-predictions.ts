@@ -1,6 +1,7 @@
 type LocalPrediction = {
   home: string;
   away: string;
+  penaltyWinner?: "home" | "away" | "";
   updatedAt: string;
 };
 
@@ -29,6 +30,7 @@ export function saveLocalPrediction(params: {
   matchId: string;
   home: string;
   away: string;
+  penaltyWinner?: "home" | "away" | "";
 }) {
   if (typeof window === "undefined") {
     return;
@@ -40,6 +42,7 @@ export function saveLocalPrediction(params: {
     [params.matchId]: {
       home: params.home,
       away: params.away,
+      penaltyWinner: params.penaltyWinner ?? "",
       updatedAt: new Date().toISOString(),
     },
   };

@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ensureLeagueMembershipForUser, getUserDisplayName } from "@/lib/auth";
 import { getCountryFlagUrl } from "@/lib/country-flags";
-import { deleteLocalPrediction, getLocalPredictions, saveLocalPrediction } from "@/lib/local-predictions";
+import { getLocalPredictions, saveLocalPrediction } from "@/lib/local-predictions";
 import { getPredictionLockState } from "@/lib/prediction-locking";
 import { supabase } from "@/lib/supabase";
 import type { PredictionsPageData } from "@/lib/predictions-page-data";
@@ -90,6 +90,10 @@ function formatPreviewSectionDateLabel(date: string) {
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
+function isKnockoutStage(stageKey: PredictionsPageData["matches"][number]["stageKey"]) {
+  return stageKey !== "group";
+}
+
 type RoundOf32PreviewSlot =
   | {
       kind: "position";
@@ -142,6 +146,7 @@ const roundOf32PreviewTemplates: RoundOf32PreviewTemplate[] = [
 type ScoreDraft = {
   home: string;
   away: string;
+  penaltyWinner?: "home" | "away" | "";
 };
 
 type ViewMode = "date" | "group";
@@ -288,7 +293,11 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
       const localDrafts = Object.fromEntries(
         Object.entries(localPredictions).map(([matchId, prediction]) => [
           matchId,
-          { home: prediction.home, away: prediction.away },
+          {
+            home: prediction.home,
+            away: prediction.away,
+            penaltyWinner: prediction.penaltyWinner ?? "",
+          },
         ]),
       );
       const localSavedIds = Object.fromEntries(Object.keys(localDrafts).map((matchId) => [matchId, true]));
@@ -335,6 +344,8 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                 prediction.predicted_away_score !== null && prediction.predicted_away_score !== undefined
                   ? String(prediction.predicted_away_score)
                   : "",
+              penaltyWinner:
+                localDrafts[prediction.match_id]?.penaltyWinner ?? "",
             },
           ]),
         );
@@ -896,6 +907,44 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
     return Array.from(groups.values());
   }, [roundOf32PreviewMatches]);
 
+  const officialRoundOf32Matches = useMemo(
+    () =>
+      editableMatches.filter((match) => {
+        if (isPlaceholderKnockoutLabel(match.home) || isPlaceholderKnockoutLabel(match.away)) {
+          return false;
+        }
+
+        if (match.matchNumber !== null) {
+          return match.matchNumber >= 73 && match.matchNumber <= 88;
+        }
+
+        return match.stageKey === "round_of_32";
+      }),
+    [editableMatches],
+  );
+
+  const groupedOfficialRoundOf32Matches = useMemo(() => {
+    const groups = new Map<string, { title: string; subtitle: string; matches: EnrichedMatch[] }>();
+
+    for (const match of officialRoundOf32Matches) {
+      const dateLabel = formatSectionDateLabel(match.kickoffAt);
+      const existing = groups.get(dateLabel);
+
+      if (existing) {
+        existing.matches.push(match);
+        continue;
+      }
+
+      groups.set(dateLabel, {
+        title: "Partidos oficiales",
+        subtitle: dateLabel,
+        matches: [match],
+      });
+    }
+
+    return Array.from(groups.values());
+  }, [officialRoundOf32Matches]);
+
   function updateDraft(matchId: string, side: "home" | "away", value: string) {
     if (value !== "" && !/^\d+$/.test(value)) return;
 
@@ -904,7 +953,23 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
       [matchId]: {
         home: current[matchId]?.home ?? "",
         away: current[matchId]?.away ?? "",
+        penaltyWinner: current[matchId]?.penaltyWinner ?? "",
         [side]: value,
+      },
+    }));
+    setSavedMatchIds((current) => ({
+      ...current,
+      [matchId]: false,
+    }));
+  }
+
+  function updatePenaltyWinner(matchId: string, value: "home" | "away" | "") {
+    setDrafts((current) => ({
+      ...current,
+      [matchId]: {
+        home: current[matchId]?.home ?? "",
+        away: current[matchId]?.away ?? "",
+        penaltyWinner: value,
       },
     }));
     setSavedMatchIds((current) => ({
@@ -932,6 +997,15 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
       return;
     }
 
+    if (
+      isKnockoutStage(match.stageKey) &&
+      draft.home === draft.away &&
+      !draft.penaltyWinner
+    ) {
+      showToast("Si pronosticas empate, elige tambien el ganador por penales.", "error");
+      return;
+    }
+
     if (!currentUser) {
       showToast("Inicia sesion antes de guardar pronosticos.", "error");
       return;
@@ -952,6 +1026,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
           matchId,
           home: draft.home,
           away: draft.away,
+          penaltyWinner: draft.penaltyWinner ?? "",
         });
         setSavedMatchIds((current) => ({
           ...current,
@@ -1001,10 +1076,13 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
         throw error;
       }
 
-      deleteLocalPrediction({
+      saveLocalPrediction({
         leagueId: data.leagueId,
         userName: currentUserName,
         matchId,
+        home: draft.home,
+        away: draft.away,
+        penaltyWinner: draft.penaltyWinner ?? "",
       });
 
       setSavedMatchIds((current) => ({
@@ -1031,6 +1109,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
         matchId,
         home: draft.home,
         away: draft.away,
+        penaltyWinner: draft.penaltyWinner ?? "",
       });
       setSavedMatchIds((current) => ({
         ...current,
@@ -1394,6 +1473,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                                       isSaving={isSaving}
                                       onHomeChange={(value) => updateDraft(match.id, "home", value)}
                                       onAwayChange={(value) => updateDraft(match.id, "away", value)}
+                                      onPenaltyWinnerChange={(value) => updatePenaltyWinner(match.id, value)}
                                       onSave={() => savePrediction(match.id)}
                                     />
                                   );
@@ -1528,6 +1608,20 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                                           />
                                         </div>
 
+                                        {isKnockoutStage(match.stageKey) &&
+                                        draft.home !== "" &&
+                                        draft.home === draft.away ? (
+                                          <div className="mt-4">
+                                            <PenaltyWinnerPicker
+                                              value={draft.penaltyWinner ?? ""}
+                                              disabled={(!match.liveCanCreate && !match.liveCanEdit) || isSaving}
+                                              homeTeam={match.home}
+                                              awayTeam={match.away}
+                                              onChange={(value) => updatePenaltyWinner(match.id, value)}
+                                            />
+                                          </div>
+                                        ) : null}
+
                                         <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                           <p className="text-xs leading-6" style={{ color: "var(--color-text-subtle)" }}>
                                             {match.liveLockReason}
@@ -1575,6 +1669,75 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                       </p>
                     </div>
                   </div>
+
+                  {groupedOfficialRoundOf32Matches.length > 0 ? (
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p
+                            className="text-xs font-semibold uppercase tracking-[0.24em]"
+                            style={{ color: "var(--color-text-subtle)" }}
+                          >
+                            Partidos oficiales
+                          </p>
+                          <h2 className="text-2xl font-black text-white">Tambien puedes pronosticar los cruces reales aqui</h2>
+                        </div>
+                        <p className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
+                          {officialRoundOf32Matches.length} partidos
+                        </p>
+                      </div>
+
+                      <div className="grid gap-8 xl:grid-cols-2">
+                        {groupedOfficialRoundOf32Matches.map((group) => (
+                          <div key={`official-${group.subtitle}`} className="space-y-4">
+                            <div className="flex items-center justify-between">
+                              <h3 className="text-xl font-black text-white">{group.subtitle}</h3>
+                              <p className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
+                                {group.matches.length} partidos
+                              </p>
+                            </div>
+                            <div className={densityMode === "compact" ? "grid gap-2" : "grid gap-5"}>
+                              {group.matches.map((match) => {
+                                const draft = drafts[match.id] ?? { home: "", away: "", penaltyWinner: "" };
+                                const isSaving = savingMatchId === match.id;
+                                const isSaved = Boolean(savedMatchIds[match.id]);
+
+                                if (densityMode === "compact") {
+                                  return (
+                                    <CompactPredictionCard
+                                      key={match.id}
+                                      match={match}
+                                      draft={draft}
+                                      isSaved={isSaved}
+                                      isSaving={isSaving}
+                                      onHomeChange={(value) => updateDraft(match.id, "home", value)}
+                                      onAwayChange={(value) => updateDraft(match.id, "away", value)}
+                                      onPenaltyWinnerChange={(value) => updatePenaltyWinner(match.id, value)}
+                                      onSave={() => savePrediction(match.id)}
+                                    />
+                                  );
+                                }
+
+                                return (
+                                  <DetailedPredictionCard
+                                    key={match.id}
+                                    match={match}
+                                    draft={draft}
+                                    isSaved={isSaved}
+                                    isSaving={isSaving}
+                                    onHomeChange={(value) => updateDraft(match.id, "home", value)}
+                                    onAwayChange={(value) => updateDraft(match.id, "away", value)}
+                                    onPenaltyWinnerChange={(value) => updatePenaltyWinner(match.id, value)}
+                                    onSave={() => savePrediction(match.id)}
+                                  />
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
 
                   {groupedRoundOf32Preview.length === 0 ? (
                     <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-center text-slate-300">
@@ -1905,6 +2068,263 @@ function PreviewSlotLabel({
   );
 }
 
+function PenaltyWinnerPicker({
+  value,
+  disabled,
+  homeTeam,
+  awayTeam,
+  onChange,
+}: {
+  value: "home" | "away" | "";
+  disabled: boolean;
+  homeTeam: string;
+  awayTeam: string;
+  onChange: (value: "home" | "away" | "") => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--color-text-subtle)" }}>
+        Ganador tras penales
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange("home")}
+          className="rounded-2xl px-3 py-3 text-sm font-semibold transition disabled:opacity-50"
+          style={{
+            border: "1px solid var(--color-border-accent)",
+            backgroundColor: value === "home" ? "color-mix(in srgb, var(--color-accent) 18%, rgba(255,255,255,0.08))" : "rgba(255,255,255,0.05)",
+            color: "var(--color-text)",
+          }}
+        >
+          {homeTeam}
+        </button>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange("away")}
+          className="rounded-2xl px-3 py-3 text-sm font-semibold transition disabled:opacity-50"
+          style={{
+            border: "1px solid var(--color-border-accent)",
+            backgroundColor: value === "away" ? "color-mix(in srgb, var(--color-accent) 18%, rgba(255,255,255,0.08))" : "rgba(255,255,255,0.05)",
+            color: "var(--color-text)",
+          }}
+        >
+          {awayTeam}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CompactPenaltyWinnerPicker({
+  value,
+  disabled,
+  homeTeam,
+  awayTeam,
+  onChange,
+}: {
+  value: "home" | "away" | "";
+  disabled: boolean;
+  homeTeam: string;
+  awayTeam: string;
+  onChange: (value: "home" | "away" | "") => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => onChange("home")}
+        className="rounded-xl px-2 py-2 text-[11px] font-semibold transition disabled:opacity-50"
+        style={{
+          border: "1px solid var(--color-border-accent)",
+          backgroundColor: value === "home" ? "color-mix(in srgb, var(--color-accent) 18%, rgba(255,255,255,0.08))" : "rgba(255,255,255,0.05)",
+          color: "var(--color-text)",
+        }}
+      >
+        Penales: {getTeamCode(homeTeam)}
+      </button>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => onChange("away")}
+        className="rounded-xl px-2 py-2 text-[11px] font-semibold transition disabled:opacity-50"
+        style={{
+          border: "1px solid var(--color-border-accent)",
+          backgroundColor: value === "away" ? "color-mix(in srgb, var(--color-accent) 18%, rgba(255,255,255,0.08))" : "rgba(255,255,255,0.05)",
+          color: "var(--color-text)",
+        }}
+      >
+        Penales: {getTeamCode(awayTeam)}
+      </button>
+    </div>
+  );
+}
+
+function DetailedPredictionCard({
+  match,
+  draft,
+  isSaved,
+  isSaving,
+  onHomeChange,
+  onAwayChange,
+  onPenaltyWinnerChange,
+  onSave,
+}: {
+  match: EnrichedMatch;
+  draft: ScoreDraft;
+  isSaved: boolean;
+  isSaving: boolean;
+  onHomeChange: (value: string) => void;
+  onAwayChange: (value: string) => void;
+  onPenaltyWinnerChange: (value: "home" | "away" | "") => void;
+  onSave: () => void;
+}) {
+  const localKickoff = formatLocalMatchTime(match.kickoffAt);
+  const stageLabel = match.groupLabel ?? match.stage;
+  const showPenaltyWinner = isKnockoutStage(match.stageKey) && draft.home !== "" && draft.home === draft.away;
+
+  return (
+    <article
+      className="rounded-[2rem] p-5 transition duration-300 hover:-translate-y-1"
+      style={{
+        border: "1px solid var(--color-border-accent)",
+        backgroundColor: "rgba(255, 255, 255, 0.05)",
+        boxShadow: "0 24px 56px rgba(0, 0, 0, 0.22)",
+      }}
+    >
+      <div className="flex flex-col gap-6">
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <span
+              className="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]"
+              style={{
+                border: "1px solid var(--color-border-accent)",
+                backgroundColor: "rgba(255, 255, 255, 0.08)",
+                color: "var(--color-text-subtle)",
+              }}
+            >
+              {stageLabel}
+            </span>
+            <span className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
+              {localKickoff.date} - {localKickoff.time}
+            </span>
+            <span className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
+              {match.venue?.trim() || "Sede por confirmar"}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 sm:gap-4">
+            <TeamPanel name={match.home} align="right" />
+            <div
+              className="mx-auto rounded-full px-3 py-1 text-xs font-bold"
+              style={{
+                border: "1px solid var(--color-border-accent)",
+                backgroundColor: "rgba(255, 255, 255, 0.1)",
+                color: "var(--color-text-subtle)",
+              }}
+            >
+              VS
+            </div>
+            <TeamPanel name={match.away} align="left" />
+          </div>
+        </div>
+
+        <div
+          className="rounded-[1.6rem] p-4"
+          style={{
+            border: "1px solid var(--color-border-accent)",
+            backgroundColor: "color-mix(in srgb, var(--color-secondary) 74%, transparent)",
+          }}
+        >
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-semibold">Marcador pronosticado</p>
+            {match.liveLockState !== "open" ? (
+              <span
+                className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em]"
+                style={{
+                  border:
+                    match.liveLockState === "match-locked"
+                      ? "1px solid rgba(248, 113, 113, 0.3)"
+                      : "1px solid rgba(251, 191, 36, 0.28)",
+                  backgroundColor:
+                    match.liveLockState === "match-locked"
+                      ? "rgba(239, 68, 68, 0.14)"
+                      : "rgba(245, 158, 11, 0.14)",
+                  color:
+                    match.liveLockState === "match-locked"
+                      ? "rgb(254, 202, 202)"
+                      : "rgb(254, 240, 138)",
+                }}
+              >
+                <Lock className="h-3.5 w-3.5" />
+                {match.liveLockState === "match-locked" ? "Bloqueado" : "Cierre de creación"}
+              </span>
+            ) : (
+              <div className="flex items-center gap-2">
+                {isSaved ? <StatusChip tone="saved">Guardado</StatusChip> : null}
+                <StatusChip tone="open">Abierto</StatusChip>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+            <ScoreInput
+              label={`Marcador de ${match.home}`}
+              value={draft.home}
+              disabled={(!match.liveCanCreate && !match.liveCanEdit) || isSaving}
+              onChange={onHomeChange}
+            />
+            <div className="text-center text-sm font-semibold" style={{ color: "var(--color-text-subtle)" }}>
+              -
+            </div>
+            <ScoreInput
+              label={`Marcador de ${match.away}`}
+              value={draft.away}
+              disabled={(!match.liveCanCreate && !match.liveCanEdit) || isSaving}
+              onChange={onAwayChange}
+            />
+          </div>
+
+          {showPenaltyWinner ? (
+            <div className="mt-4">
+              <PenaltyWinnerPicker
+                value={draft.penaltyWinner ?? ""}
+                disabled={(!match.liveCanCreate && !match.liveCanEdit) || isSaving}
+                homeTeam={match.home}
+                awayTeam={match.away}
+                onChange={onPenaltyWinnerChange}
+              />
+            </div>
+          ) : null}
+
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs leading-6" style={{ color: "var(--color-text-subtle)" }}>
+              {match.liveLockReason}
+            </p>
+            <button
+              type="button"
+              disabled={(!match.liveCanCreate && !match.liveCanEdit) || isSaving}
+              onClick={onSave}
+              className="w-full shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition duration-200 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+              style={{
+                border: "1px solid color-mix(in srgb, var(--color-accent) 28%, transparent)",
+                backgroundColor: "color-mix(in srgb, var(--color-accent) 18%, rgba(255,255,255,0.08))",
+                color: "var(--color-text)",
+                boxShadow: "0 14px 30px rgba(0, 0, 0, 0.18)",
+              }}
+            >
+              {isSaving ? "Guardando..." : "Guardar pronóstico"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function CompactScoreInput({
   label,
   value,
@@ -1944,6 +2364,7 @@ function CompactPredictionCard({
   isSaving,
   onHomeChange,
   onAwayChange,
+  onPenaltyWinnerChange,
   onSave,
 }: {
   match: EnrichedMatch;
@@ -1952,9 +2373,11 @@ function CompactPredictionCard({
   isSaving: boolean;
   onHomeChange: (value: string) => void;
   onAwayChange: (value: string) => void;
+  onPenaltyWinnerChange: (value: "home" | "away" | "") => void;
   onSave: () => void;
 }) {
   const timing = formatLocalMatchTime(match.kickoffAt);
+  const showPenaltyWinner = isKnockoutStage(match.stageKey) && draft.home !== "" && draft.home === draft.away;
 
   return (
   <article
@@ -1964,7 +2387,8 @@ function CompactPredictionCard({
       backgroundColor: "rgba(255, 255, 255, 0.045)",
     }}
   >
-    <div className="grid grid-cols-[4rem_minmax(0,1fr)_5.5rem_minmax(0,1fr)_auto] items-center gap-2 text-xs">
+    <div className="space-y-2">
+      <div className="grid grid-cols-[4rem_minmax(0,1fr)_5.5rem_minmax(0,1fr)_auto] items-center gap-2 text-xs">
       <div style={{ color: "var(--color-text-subtle)" }}>
         <div>{timing.date}</div>
         <div>{timing.time}</div>
@@ -2005,6 +2429,17 @@ function CompactPredictionCard({
       >
         {isSaving ? "..." : isSaved ? "OK" : "Guardar"}
       </button>
+      </div>
+
+      {showPenaltyWinner ? (
+        <CompactPenaltyWinnerPicker
+          value={draft.penaltyWinner ?? ""}
+          disabled={(!match.liveCanCreate && !match.liveCanEdit) || isSaving}
+          homeTeam={match.home}
+          awayTeam={match.away}
+          onChange={onPenaltyWinnerChange}
+        />
+      ) : null}
     </div>
   </article>
 );
