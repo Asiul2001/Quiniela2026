@@ -1407,7 +1407,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                     color: "var(--color-text)",
                   }}
                 >
-                  Vista previa de dieciseisavos
+                  Cruces de dieciseisavos
                 </button>
                 <button
                   type="button"
@@ -1418,7 +1418,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                     color: "var(--color-text)",
                   }}
                 >
-                  Vista previa de octavos
+                  Cruces de octavos
                 </button>
               </div>
             </div>
@@ -1536,14 +1536,14 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                     ) : (
                       <>
                         {groupedMatches.map((group) => (
-                          <div key={`${group.title}-${group.subtitle}`} className="space-y-4">
+                          <div key={`$Resultado proyectado-${group.subtitle}`} className="space-y-4">
                             <div className="flex items-center justify-between">
                               <div>
                                 <p
                                   className="text-xs font-semibold uppercase tracking-[0.24em]"
                                   style={{ color: "var(--color-text-subtle)" }}
                                 >
-                                  {group.title}
+                                  Resultado proyectado
                                 </p>
 
                                 {densityMode !== "compact" ? (
@@ -1560,7 +1560,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                               className={
                                 densityMode === "compact"
                                   ? "grid gap-2"
-                                  : "grid gap-5 xl:grid-cols-2"
+                                  : "grid gap-5"
                               }
                             >
                               {group.matches.map((match) => {
@@ -1766,7 +1766,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                   >
                     <div className="flex flex-col gap-2">
                       <p className="text-sm font-semibold uppercase tracking-[0.24em]" style={{ color: "var(--color-text-subtle)" }}>
-                        Vista previa
+                        Cruces
                       </p>
                       <h2 className="text-2xl font-black text-white">Así se verían los dieciseisavos</h2>
                       <p className="text-sm leading-6" style={{ color: "var(--color-text-subtle)" }}>
@@ -1775,6 +1775,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                     </div>
                   </div>
 
+                  <div className="grid gap-6">
                   {groupedOfficialRoundOf32Matches.length > 0 ? (
                     <div className="space-y-6">
                       <div className="flex items-center justify-between">
@@ -1785,14 +1786,14 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                           >
                             Partidos oficiales
                           </p>
-                          <h2 className="text-2xl font-black text-white">Tambien puedes pronosticar los cruces reales aqui</h2>
+                          <h2 className="text-2xl font-black text-white">Pronostica esta ronda</h2>
                         </div>
                         <p className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
                           {officialRoundOf32Matches.length} partidos
                         </p>
                       </div>
 
-                      <div className="grid gap-8 xl:grid-cols-2">
+                      <div className="grid gap-6">
                         {groupedOfficialRoundOf32Matches.map((group) => (
                           <div key={`official-${group.subtitle}`} className="space-y-4">
                             <div className="flex items-center justify-between">
@@ -1844,20 +1845,21 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                     </div>
                   ) : null}
 
+                  <div className="space-y-6">
                   {groupedRoundOf32Preview.length === 0 ? (
                     <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-center text-slate-300">
-                      Completa más pronósticos de grupos para ver una simulación de los dieciseisavos.
+                      Completa mas pronosticos de grupos para ver la simulacion de esta ronda.
                     </div>
                   ) : (
                     groupedRoundOf32Preview.map((group) => (
-                      <div key={`${group.title}-${group.subtitle}`} className="space-y-4">
+                      <div key={`$Resultado proyectado-${group.subtitle}`} className="space-y-4">
                         <div className="flex items-center justify-between">
                         <div>
                           <p
                             className="text-xs font-semibold uppercase tracking-[0.24em]"
                             style={{ color: "var(--color-text-subtle)" }}
                           >
-                            {group.title}
+                            Resultado proyectado
                           </p>
 
                           {densityMode !== "compact" ? (
@@ -1872,8 +1874,8 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                         <div
                           className={
                             densityMode === "compact"
-                              ? "grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
-                              : "grid gap-5 xl:grid-cols-2"
+                              ? "grid gap-3 sm:grid-cols-2"
+                              : "grid gap-5"
                           }
                         >
                           {group.matches.map((match) => {
@@ -1960,6 +1962,8 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                       </div>
                     ))
                   )}
+                  </div>
+                  </div>
                 </section>
               ) : (
                 <section className="grid gap-8">
@@ -1969,7 +1973,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                   >
                     <div className="flex flex-col gap-2">
                       <p className="text-sm font-semibold uppercase tracking-[0.24em]" style={{ color: "var(--color-text-subtle)" }}>
-                        Vista previa
+                        Cruces
                       </p>
                       <h2 className="text-2xl font-black text-white">Asi se verian los octavos</h2>
                       <p className="text-sm leading-6" style={{ color: "var(--color-text-subtle)" }}>
@@ -1991,7 +1995,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                               className="text-xs font-semibold uppercase tracking-[0.24em]"
                               style={{ color: "var(--color-text-subtle)" }}
                             >
-                              {group.title}
+                              Resultado proyectado
                             </p>
                             <h2 className="text-2xl font-black text-white">{group.subtitle}</h2>
                           </div>
@@ -2004,8 +2008,8 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                         <div
                           className={
                             densityMode === "compact"
-                              ? "grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
-                              : "grid gap-5 xl:grid-cols-2"
+                              ? "grid gap-3 sm:grid-cols-2"
+                              : "grid gap-5"
                           }
                         >
                           {group.matches.map((match) =>
@@ -2826,3 +2830,6 @@ function ProgressBar({ value }: { value: number }) {
     </div>
   );
 }
+
+
+
