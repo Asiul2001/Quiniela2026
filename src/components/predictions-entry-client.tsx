@@ -99,6 +99,14 @@ function isKnockoutStage(stageKey: PredictionsPageData["matches"][number]["stage
   return stageKey !== "group";
 }
 
+function getLegacyRoundOf32FallbackId(matchNumber: number) {
+  return `fallback-round-of-32-${matchNumber}`;
+}
+
+function isRoundOf32PreviewPlaceholderName(name: string) {
+  return /lugar del grupo|mejor tercero|group|grupo/i.test(name);
+}
+
 type RoundOf32PreviewSlot =
   | {
       kind: "position";
@@ -295,8 +303,30 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
 
     async function loadUserPredictions() {
       const localPredictions = getLocalPredictions(data.leagueId, userName);
+      const migratedLocalPredictions = { ...localPredictions };
+      const officialRoundOf32Matches = data.matches.filter((match) => {
+        if (match.matchNumber === null) {
+          return false;
+        }
+
+        return match.matchNumber >= 73 && match.matchNumber <= 88;
+      });
+
+      for (const match of officialRoundOf32Matches) {
+        if (match.matchNumber === null || migratedLocalPredictions[match.id]) {
+          continue;
+        }
+
+        const legacyPrediction = localPredictions[getLegacyRoundOf32FallbackId(match.matchNumber)];
+        if (!legacyPrediction) {
+          continue;
+        }
+
+        migratedLocalPredictions[match.id] = legacyPrediction;
+      }
+
       const localDrafts = Object.fromEntries(
-        Object.entries(localPredictions).map(([matchId, prediction]) => [
+        Object.entries(migratedLocalPredictions).map(([matchId, prediction]) => [
           matchId,
           {
             home: prediction.home,
@@ -306,6 +336,19 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
         ]),
       );
       const localSavedIds = Object.fromEntries(Object.keys(localDrafts).map((matchId) => [matchId, true]));
+
+      for (const [matchId, prediction] of Object.entries(migratedLocalPredictions)) {
+        if (!(matchId in localPredictions)) {
+          saveLocalPrediction({
+            leagueId: data.leagueId,
+            userName,
+            matchId,
+            home: prediction.home,
+            away: prediction.away,
+            penaltyWinner: prediction.penaltyWinner ?? "",
+          });
+        }
+      }
 
       if (!supabase) {
         if (!active) return;
@@ -970,11 +1013,28 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
       ]),
     ).sort((a, b) => a - b);
 
-    return orderedMatchNumbers.map((matchNumber) => ({
-      matchNumber,
-      preview: previewByMatchNumber.get(matchNumber) ?? null,
-      official: officialByMatchNumber.get(matchNumber) ?? null,
-    }));
+    return orderedMatchNumbers.map((matchNumber) => {
+      const official = officialByMatchNumber.get(matchNumber) ?? null;
+      const rawPreview = previewByMatchNumber.get(matchNumber) ?? null;
+      const preview =
+        rawPreview && official
+          ? {
+              ...rawPreview,
+              home: isRoundOf32PreviewPlaceholderName(rawPreview.home) ? official.home : rawPreview.home,
+              away: isRoundOf32PreviewPlaceholderName(rawPreview.away) ? official.away : rawPreview.away,
+              note:
+                isRoundOf32PreviewPlaceholderName(rawPreview.home) || isRoundOf32PreviewPlaceholderName(rawPreview.away)
+                  ? "Partido real mostrado porque este cruce ya quedo definido oficialmente."
+                  : rawPreview.note,
+            }
+          : rawPreview;
+
+      return {
+        matchNumber,
+        preview,
+        official,
+      };
+    });
   }, [officialRoundOf32Matches, roundOf32PreviewMatches]);
 
   const predictedRoundOf32Winners = useMemo(() => {
