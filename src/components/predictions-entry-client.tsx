@@ -285,6 +285,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
   const [now, setNow] = useState(() => Date.now());
   const [remoteSyncAvailable, setRemoteSyncAvailable] = useState(Boolean(supabase));
   const [remoteSyncError, setRemoteSyncError] = useState<string | null>(null);
+  const [syncingRoundOf32, setSyncingRoundOf32] = useState(false);
   const toastIdRef = useRef(0);
 
   useEffect(() => {
@@ -1159,6 +1160,98 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
     }));
   }
 
+  async function syncRoundOf32PredictionsToDatabase() {
+    if (!supabase) {
+      showToast("Supabase no esta configurado en este entorno.", "error");
+      return;
+    }
+
+    if (!currentUser) {
+      showToast("Inicia sesion antes de sincronizar pronosticos.", "error");
+      return;
+    }
+
+    if (!currentUserName) {
+      showToast("Tu cuenta todavia no tiene nombre visible, asi que aun no se pueden sincronizar pronosticos.", "error");
+      return;
+    }
+
+    const syncableMatches = officialRoundOf32Matches.filter((match) => {
+      const draft = drafts[match.id];
+      if (!draft || draft.home === "" || draft.away === "") {
+        return false;
+      }
+
+      if (!/^\d+$/.test(draft.home) || !/^\d+$/.test(draft.away)) {
+        return false;
+      }
+
+      if (draft.home === draft.away && !draft.penaltyWinner) {
+        return false;
+      }
+
+      return true;
+    });
+
+    if (syncableMatches.length === 0) {
+      showToast("No hay pronosticos completos de dieciseisavos para sincronizar.", "error");
+      return;
+    }
+
+    setSyncingRoundOf32(true);
+
+    try {
+      let resolvedMemberId = memberId;
+      if (!resolvedMemberId) {
+        const membership = await ensureLeagueMembershipForUser(currentUser, currentUserName);
+        resolvedMemberId = membership.memberId;
+        setMemberId(membership.memberId);
+      }
+
+      const { error } = await supabase.from("predictions").upsert(
+        syncableMatches.map((match) => {
+          const draft = drafts[match.id]!;
+
+          return {
+            league_id: data.leagueId,
+            member_id: resolvedMemberId,
+            match_id: match.id,
+            predicted_home_score: Number(draft.home),
+            predicted_away_score: Number(draft.away),
+            updated_at: new Date().toISOString(),
+          };
+        }),
+        {
+          onConflict: "member_id,match_id",
+        },
+      );
+
+      if (error) {
+        throw error;
+      }
+
+      const syncedMatchIds = Object.fromEntries(syncableMatches.map((match) => [match.id, true]));
+      setSavedMatchIds((current) => ({
+        ...current,
+        ...syncedMatchIds,
+      }));
+      setExistingPredictionIds((current) => ({
+        ...current,
+        ...syncedMatchIds,
+      }));
+      setRemoteSyncAvailable(true);
+      setRemoteSyncError(null);
+      showToast(`Se sincronizaron ${syncableMatches.length} pronosticos de dieciseisavos a la base de datos.`, "success");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "No se pudieron sincronizar los pronosticos de dieciseisavos.";
+      setRemoteSyncError(message);
+      showToast(message, "error");
+    } finally {
+      setSyncingRoundOf32(false);
+    }
+  }
+
   async function savePrediction(matchId: string) {
     const match = enrichedMatches.find((item) => item.id === matchId);
     const draft = drafts[matchId];
@@ -1856,6 +1949,22 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                         Esta pestaña muestra cómo quedarían los cruces según tus pronósticos actuales de la fase de grupos y de los mejores terceros. Mientras los equipos no estén definidos oficialmente, aquí no se puede pronosticar ni guardar resultados.
                       </p>
                     </div>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      disabled={syncingRoundOf32}
+                      onClick={() => void syncRoundOf32PredictionsToDatabase()}
+                      className="rounded-full px-4 py-2 text-sm font-semibold transition duration-200 disabled:cursor-not-allowed disabled:opacity-60"
+                      style={{
+                        border: "1px solid color-mix(in srgb, var(--color-accent) 28%, transparent)",
+                        backgroundColor: "color-mix(in srgb, var(--color-accent) 18%, rgba(255,255,255,0.08))",
+                        color: "var(--color-text)",
+                      }}
+                    >
+                      {syncingRoundOf32 ? "Sincronizando..." : "Sincronizar dieciseisavos a la base de datos"}
+                    </button>
                   </div>
 
                   <div className="space-y-6">
