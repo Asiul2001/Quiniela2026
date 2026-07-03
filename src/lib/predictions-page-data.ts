@@ -825,7 +825,7 @@ export async function getPredictionsPageData(): Promise<PredictionsPageData> {
         .single(),
       client
         .from("teams")
-        .select("id,name,tier")
+        .select("id,name,team_tier")
         .eq("tournament_id", leagueTournament.tournament_id),
       client
         .from("matches")
@@ -848,7 +848,7 @@ const teamMap = new Map((teams ?? []).map((team) => [team.id, getDisplayCountryN
 const teamOptions: TeamOptions[] = (teams ?? []).map((team) => ({
   id: team.id,
   name: getDisplayCountryName(team.name),
-  tier: team.tier ?? "favorite",
+  tier: team.team_tier ?? "favorite",
 }));
 
     
