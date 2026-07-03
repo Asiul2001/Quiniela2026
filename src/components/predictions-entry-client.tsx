@@ -1014,28 +1014,11 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
       ]),
     ).sort((a, b) => a - b);
 
-    return orderedMatchNumbers.map((matchNumber) => {
-      const official = officialByMatchNumber.get(matchNumber) ?? null;
-      const rawPreview = previewByMatchNumber.get(matchNumber) ?? null;
-      const preview =
-        rawPreview && official
-          ? {
-              ...rawPreview,
-              home: isRoundOf32PreviewPlaceholderName(rawPreview.home) ? official.home : rawPreview.home,
-              away: isRoundOf32PreviewPlaceholderName(rawPreview.away) ? official.away : rawPreview.away,
-              note:
-                isRoundOf32PreviewPlaceholderName(rawPreview.home) || isRoundOf32PreviewPlaceholderName(rawPreview.away)
-                  ? "Partido real mostrado porque este cruce ya quedo definido oficialmente."
-                  : rawPreview.note,
-            }
-          : rawPreview;
-
-      return {
-        matchNumber,
-        preview,
-        official,
-      };
-    });
+    return orderedMatchNumbers.map((matchNumber) => ({
+      matchNumber,
+      preview: previewByMatchNumber.get(matchNumber) ?? null,
+      official: officialByMatchNumber.get(matchNumber) ?? null,
+    }));
   }, [officialRoundOf32Matches, roundOf32PreviewMatches]);
 
   const predictedRoundOf32Winners = useMemo(() => {
