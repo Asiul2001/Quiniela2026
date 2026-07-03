@@ -861,7 +861,12 @@ const teamOptions: TeamOptions[] = (teams ?? []).map((team) => ({
       updatedAt: deadline.deadline_at,
     }));
     const rawMatches = (matches ?? [])
-      .filter((match) => match.status === "scheduled" || match.status === "live")
+      .filter(
+        (match) =>
+          match.status === "scheduled" ||
+          match.status === "live" ||
+          match.stage === "group",
+      )
       .map((match) => ({
         id: match.id,
         stage: match.stage,
@@ -873,7 +878,12 @@ const teamOptions: TeamOptions[] = (teams ?? []).map((team) => ({
     const groupAssignments = deriveGroupAssignments(rawMatches);
 
     const predictionMatches = (matches ?? [])
-      .filter((match) => match.status === "scheduled" || match.status === "live")
+      .filter(
+        (match) =>
+          match.status === "scheduled" ||
+          match.status === "live" ||
+          match.stage === "group",
+      )
       .map((match) => {
         const matchNumber = match.match_number ?? null;
         const groupLabel = match.stage === "group"
