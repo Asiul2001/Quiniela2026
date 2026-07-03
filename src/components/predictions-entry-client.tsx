@@ -746,8 +746,8 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
       }
 
       const draft = drafts[match.id];
-      const homeScore = draft?.home ? Number(draft.home) : NaN;
-      const awayScore = draft?.away ? Number(draft.away) : NaN;
+      const homeScore = draft?.home !== "" && draft?.home !== undefined ? Number(draft.home) : 0;
+      const awayScore = draft?.away !== "" && draft?.away !== undefined ? Number(draft.away) : 0;
 
       if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore)) {
         continue;
