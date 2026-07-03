@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { PRIMARY_LEAGUE_SLUG } from "@/lib/app-config";
+import { getDisplayCountryName } from "@/lib/country-flags";
 import { getPredictionLockState } from "@/lib/prediction-locking";
 import { hasSupabaseEnv as hasSupabaseClientEnv, supabase } from "@/lib/supabase";
 import type { PhaseDeadline, Stage, TeamTier } from "@/lib/types";
@@ -748,8 +749,8 @@ async function loadSeedFallbackMatches(): Promise<PredictionEntryMatch[]> {
 
     return createPredictionEntryMatch({
       id: match.id,
-      home: teamMap.get(match.homeTeamId) ?? "Home team",
-      away: teamMap.get(match.awayTeamId) ?? "Away team",
+      home: getDisplayCountryName(teamMap.get(match.homeTeamId) ?? "Home team"),
+      away: getDisplayCountryName(teamMap.get(match.awayTeamId) ?? "Away team"),
       stage: match.stage,
       groupLabel: teamGroup ?? deriveGroupLabel(match.stage, match.matchNumber),
       roundNumber: match.roundNumber,
@@ -842,11 +843,11 @@ export async function getPredictionsPageData(): Promise<PredictionsPageData> {
         .eq("tournament_id", leagueTournament.tournament_id),
     ]);
 
-const teamMap = new Map((teams ?? []).map((team) => [team.id, team.name]));
+const teamMap = new Map((teams ?? []).map((team) => [team.id, getDisplayCountryName(team.name)]));
 
 const teamOptions: TeamOptions[] = (teams ?? []).map((team) => ({
   id: team.id,
-  name: team.name,
+  name: getDisplayCountryName(team.name),
   tier: team.team_tier ?? "favorite",
 }));
 
@@ -881,8 +882,8 @@ const teamOptions: TeamOptions[] = (teams ?? []).map((team) => ({
 
         return createPredictionEntryMatch({
           id: match.id,
-          home: teamMap.get(match.home_team_id) ?? "Home team",
-          away: teamMap.get(match.away_team_id) ?? "Away team",
+          home: getDisplayCountryName(teamMap.get(match.home_team_id) ?? "Home team"),
+          away: getDisplayCountryName(teamMap.get(match.away_team_id) ?? "Away team"),
           stage: match.stage,
           groupLabel,
           roundNumber: match.round_number ?? null,

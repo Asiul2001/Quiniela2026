@@ -1140,7 +1140,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
     setSavingMatchId(matchId);
 
     try {
-      if (!supabase || !remoteSyncAvailable) {
+      if (!supabase) {
         saveLocalPrediction({
           leagueId: data.leagueId,
           userName: currentUserName,
@@ -1157,12 +1157,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
           ...current,
           [matchId]: true,
         }));
-        showToast(
-          remoteSyncError
-            ? `Pronostico guardado solo en este dispositivo porque la sincronizacion remota no esta disponible: ${remoteSyncError}`
-            : "Pronostico guardado solo en este dispositivo para esta cuenta.",
-          "success",
-        );
+        showToast("Pronostico guardado solo en este dispositivo para esta cuenta.", "success");
         return;
       }
 
@@ -1215,6 +1210,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
         [matchId]: true,
       }));
       setRemoteSyncAvailable(true);
+      setRemoteSyncError(null);
       showToast("Pronostico guardado correctamente.", "success");
     } catch (error) {
       const message = error instanceof Error ? error.message : "No se pudo guardar el pronostico.";
