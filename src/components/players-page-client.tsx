@@ -15,6 +15,12 @@ type PlayerSummary = {
   points: number;
   completion: number;
   predictionsCount: number;
+  breakdown?: {
+    matchPoints: number;
+    extraPoints: number;
+    darkHorsePoints: number;
+    projectionPoints: number;
+  };
 };
 
 type PlayerPrediction = {
@@ -30,6 +36,16 @@ type PlayerPrediction = {
   venue: string;
   status: string;
   points: number;
+  bonusPoints?: number;
+};
+
+type PlayerExtraPoint = {
+  id: string;
+  label: string;
+  detail: string;
+  points: number;
+  category: "dark_horse" | "projection_bonus";
+  kickoffAt?: string | null;
 };
 
 function formatLocalMatchTime(kickoffAt: string) {
@@ -53,11 +69,26 @@ function formatPredictionValue(home: number | null, away: number | null, emptyLa
   return `${home}-${away}`;
 }
 
+function formatStageLabel(stage: string) {
+  const labels: Record<string, string> = {
+    group: "Grupos",
+    round_of_32: "Dieciseisavos",
+    round_of_16: "Octavos",
+    quarter_final: "Cuartos",
+    semi_final: "Semifinal",
+    third_place: "Tercer lugar",
+    final: "Final",
+  };
+
+  return labels[stage] ?? stage;
+}
+
 export function PlayersPageClient() {
   const { user } = useAuthUser();
   const [leagueId, setLeagueId] = useState<string | null>(null);
   const [players, setPlayers] = useState<PlayerSummary[]>([]);
   const [playerPredictions, setPlayerPredictions] = useState<Record<string, PlayerPrediction[]>>({});
+  const [playerExtraPoints, setPlayerExtraPoints] = useState<Record<string, PlayerExtraPoint[]>>({});
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -101,6 +132,7 @@ export function PlayersPageClient() {
         setLeagueId(payload.leagueId);
         setPlayers(payload.players ?? []);
         setPlayerPredictions(payload.playerPredictions ?? {});
+        setPlayerExtraPoints(payload.playerExtraPoints ?? {});
         setSelectedPlayerId((current) => current ?? payload.players?.[0]?.id ?? null);
         setError(null);
       } catch (err) {
@@ -135,6 +167,18 @@ export function PlayersPageClient() {
     );
   }, [playerPredictions, selectedPlayer]);
 
+  const selectedExtraPoints = useMemo(() => {
+    if (!selectedPlayer) {
+      return [];
+    }
+
+    return (playerExtraPoints[selectedPlayer.id] ?? []).sort((a, b) => {
+      const left = a.kickoffAt ? new Date(a.kickoffAt).getTime() : Number.MAX_SAFE_INTEGER;
+      const right = b.kickoffAt ? new Date(b.kickoffAt).getTime() : Number.MAX_SAFE_INTEGER;
+      return left - right;
+    });
+  }, [playerExtraPoints, selectedPlayer]);
+
   return (
     <main
       className="relative min-h-screen overflow-hidden"
@@ -163,8 +207,8 @@ export function PlayersPageClient() {
               className="mt-3 max-w-2xl text-sm leading-7"
               style={{ color: "var(--color-text-subtle)" }}
             >
-              Compara los puntos actuales, el porcentaje de aciertos y las predicciones para
-              los próximos partidos de cada jugador de la liga.
+              Compara los puntos actuales y revisa con transparencia de dónde sale cada uno:
+              partidos, cruces proyectados, avances y dark horse.
             </p>
           </div>
 
@@ -327,7 +371,7 @@ export function PlayersPageClient() {
                       Jugador seleccionado
                     </p>
                     <p className="mt-2 break-words text-3xl font-black">
-                      {selectedPlayer?.name ?? "No player selected"}
+                      {selectedPlayer?.name ?? "Sin jugador seleccionado"}
                     </p>
                   </div>
                   <div
@@ -339,8 +383,92 @@ export function PlayersPageClient() {
                   >
                     {selectedPlayer
                       ? `${selectedPlayer.points} puntos · ${selectedPlayer.completion}% completado`
-                      : "Pick a player"}
+                      : "Elige un jugador"}
                   </div>
+                </div>
+
+                {selectedPlayer?.breakdown ? (
+                  <div className="mb-6 grid gap-3 md:grid-cols-4">
+                    {[
+                      ["Puntos de partidos", selectedPlayer.breakdown.matchPoints],
+                      ["Puntos extra", selectedPlayer.breakdown.extraPoints],
+                      ["Dark Horse", selectedPlayer.breakdown.darkHorsePoints],
+                      ["Cruces y avances", selectedPlayer.breakdown.projectionPoints],
+                    ].map(([label, value]) => (
+                      <div
+                        key={String(label)}
+                        className="rounded-2xl px-4 py-4"
+                        style={{ backgroundColor: "rgba(255,255,255,0.05)" }}
+                      >
+                        <p
+                          className="text-[11px] uppercase tracking-[0.18em]"
+                          style={{ color: "var(--color-text-subtle)" }}
+                        >
+                          {label}
+                        </p>
+                        <p className="mt-2 text-2xl font-black">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div
+                  className="mb-6 rounded-[1.75rem] p-4"
+                  style={{
+                    border: "1px solid var(--color-border-accent)",
+                    backgroundColor: "rgba(255, 255, 255, 0.04)",
+                  }}
+                >
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <p
+                        className="text-xs uppercase tracking-[0.18em]"
+                        style={{ color: "var(--color-text-subtle)" }}
+                      >
+                        Puntos extra
+                      </p>
+                      <p className="mt-1 text-xl font-black">De dónde salen</p>
+                    </div>
+                    <div
+                      className="rounded-full px-3 py-1 text-xs font-semibold"
+                      style={{
+                        border: "1px solid var(--color-border-accent)",
+                        backgroundColor: "rgba(255,255,255,0.06)",
+                        color: "var(--color-text-subtle)",
+                      }}
+                    >
+                      {selectedExtraPoints.reduce((sum, item) => sum + item.points, 0)} pts
+                    </div>
+                  </div>
+
+                  {selectedExtraPoints.length === 0 ? (
+                    <p className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
+                      Todavía no hay puntos extra acumulados para este jugador.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {selectedExtraPoints.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex flex-col gap-2 rounded-2xl px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                          style={{ backgroundColor: "rgba(255,255,255,0.05)" }}
+                        >
+                          <div className="min-w-0">
+                            <p className="font-semibold">{item.label}</p>
+                            <p className="mt-1 text-sm" style={{ color: "var(--color-text-subtle)" }}>
+                              {item.detail}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xl font-black">+{item.points}</p>
+                            <p className="text-[11px] uppercase tracking-[0.18em]" style={{ color: "var(--color-text-subtle)" }}>
+                              extra
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div
@@ -382,7 +510,7 @@ export function PlayersPageClient() {
                                   >
                                     {kickoff.date} · {kickoff.time}
                                   </p>
-                                  <p className="mt-2 text-sm font-semibold">{prediction.stage}</p>
+                                  <p className="mt-2 text-sm font-semibold">{formatStageLabel(prediction.stage)}</p>
                                   <p
                                     className="mt-1 text-xs"
                                     style={{ color: "var(--color-text-subtle)" }}
@@ -442,6 +570,11 @@ export function PlayersPageClient() {
                                     Predicción
                                   </p>
                                   <p className="mt-2 text-xl font-black">{predictedResult}</p>
+                                  {(prediction.bonusPoints ?? 0) > 0 ? (
+                                    <p className="mt-1 text-xs" style={{ color: "var(--color-accent)" }}>
+                                      +{prediction.bonusPoints} por extra
+                                    </p>
+                                  ) : null}
                                 </div>
                                 <div
                                   className="rounded-2xl px-3 py-3"
@@ -470,6 +603,7 @@ export function PlayersPageClient() {
                         >
                           <tr>
                             <th className="px-4 py-4">Kickoff</th>
+                            <th className="px-4 py-4">Fase</th>
                             <th className="px-4 py-4">Partido</th>
                             <th className="px-4 py-4">Predicción</th>
                             <th className="px-4 py-4">Resultado</th>
@@ -503,6 +637,7 @@ export function PlayersPageClient() {
                                   <div>{kickoff.date}</div>
                                   <div className="mt-1 text-xs">{kickoff.time}</div>
                                 </td>
+                                <td className="px-4 py-4 align-top">{formatStageLabel(prediction.stage)}</td>
                                 <td className="px-4 py-4 align-top">
                                   <div className="flex items-center gap-2">
                                     {getCountryFlagUrl(prediction.home) ? (
@@ -527,10 +662,17 @@ export function PlayersPageClient() {
                                     className="mt-2 text-xs"
                                     style={{ color: "var(--color-text-subtle)" }}
                                   >
-                                    {prediction.stage}
+                                    {prediction.venue}
                                   </p>
                                 </td>
-                                <td className="px-4 py-4 align-top">{predictedResult}</td>
+                                <td className="px-4 py-4 align-top">
+                                  <div>{predictedResult}</div>
+                                  {(prediction.bonusPoints ?? 0) > 0 ? (
+                                    <div className="mt-1 text-xs" style={{ color: "var(--color-accent)" }}>
+                                      +{prediction.bonusPoints} extra
+                                    </div>
+                                  ) : null}
+                                </td>
                                 <td className="px-4 py-4 align-top">{actualResult}</td>
                                 <td className="px-4 py-4 align-top">{prediction.points}</td>
                               </tr>

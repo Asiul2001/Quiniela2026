@@ -2,7 +2,7 @@ create extension if not exists "pgcrypto";
 
 create type league_role as enum ('member', 'manager', 'owner');
 create type platform_role as enum ('platform_admin');
-create type match_stage as enum ('group', 'round_of_16', 'quarter_final', 'semi_final', 'final');
+create type match_stage as enum ('group', 'round_of_32', 'round_of_16', 'quarter_final', 'semi_final', 'third_place', 'final');
 create type match_status as enum ('scheduled', 'live', 'completed', 'cancelled');
 create type team_tier as enum ('favorite', 'strong_outsider', 'dark_horse', 'big_surprise');
 create type bonus_prediction_type as enum ('champion', 'finalists', 'semifinalists', 'golden_boot', 'dark_horse');
@@ -128,6 +128,7 @@ create table if not exists public.predictions (
   match_id uuid not null references public.matches (id) on delete cascade,
   predicted_home_score integer not null,
   predicted_away_score integer not null,
+  predicted_penalty_winner text check (predicted_penalty_winner in ('home', 'away')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (member_id, match_id),
@@ -143,6 +144,7 @@ create table if not exists public.prediction_scores (
   outcome_points integer not null default 0,
   goal_difference_points integer not null default 0,
   exact_score_points integer not null default 0,
+  bonus_points integer not null default 0,
   total_points integer not null default 0,
   calculated_at timestamptz not null default now()
 );

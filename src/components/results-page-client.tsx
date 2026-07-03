@@ -144,6 +144,18 @@ function getDisplayStatus(match: ResultsMatch) {
   });
 }
 
+function isKnockoutStage(stage: string) {
+  return stage !== "group";
+}
+
+function formatPenaltySummary(match: ResultsMatch) {
+  if (match.homePenaltyScore == null || match.awayPenaltyScore == null) {
+    return null;
+  }
+
+  return `Penales ${match.homePenaltyScore}-${match.awayPenaltyScore}`;
+}
+
 export function ResultsPageClient({ matches }: { matches: ResultsMatch[] }) {
   const ADMIN_USER_ID = "f22bd32d-d193-4ba4-8832-12da8f7ffc86";
   const { user } = useAuthUser();
@@ -151,7 +163,7 @@ export function ResultsPageClient({ matches }: { matches: ResultsMatch[] }) {
   const [matchesState, setMatchesState] = useState(matches);
   const [filter, setFilter] = useState<"all" | "live" | "completed" | "scheduled">("all");
   const [editedScores, setEditedScores] = useState<
-    Record<string, { home: string; away: string; status?: string }>
+    Record<string, { home: string; away: string; penaltyHome?: string; penaltyAway?: string; status?: string }>
   >({});
   const [openMatchId, setOpenMatchId] = useState<string | null>(null);
 
@@ -168,9 +180,19 @@ export function ResultsPageClient({ matches }: { matches: ResultsMatch[] }) {
 
     const homeScoreValue = score?.home ?? String(match.homeScore ?? "");
     const awayScoreValue = score?.away ?? String(match.awayScore ?? "");
+    const penaltyHomeValue = score?.penaltyHome ?? String(match.homePenaltyScore ?? "");
+    const penaltyAwayValue = score?.penaltyAway ?? String(match.awayPenaltyScore ?? "");
 
     if (homeScoreValue === "" || awayScoreValue === "") {
       alert("Pon ambos marcadores antes de guardar.");
+      return;
+    }
+
+    const isDraw = Number(homeScoreValue) === Number(awayScoreValue);
+    const needsPenalties = isKnockoutStage(match.stage) && isDraw;
+
+    if (needsPenalties && (penaltyHomeValue === "" || penaltyAwayValue === "")) {
+      alert("Si el partido termina empatado en fase final, guarda tambien los penales.");
       return;
     }
 
@@ -183,6 +205,8 @@ export function ResultsPageClient({ matches }: { matches: ResultsMatch[] }) {
         matchId: match.id,
         homeScore: Number(homeScoreValue),
         awayScore: Number(awayScoreValue),
+        homePenaltyScore: needsPenalties ? Number(penaltyHomeValue) : null,
+        awayPenaltyScore: needsPenalties ? Number(penaltyAwayValue) : null,
         status: "completed",
       }),
     });
@@ -202,6 +226,8 @@ export function ResultsPageClient({ matches }: { matches: ResultsMatch[] }) {
               ...currentMatch,
               homeScore: Number(homeScoreValue),
               awayScore: Number(awayScoreValue),
+              homePenaltyScore: needsPenalties ? Number(penaltyHomeValue) : null,
+              awayPenaltyScore: needsPenalties ? Number(penaltyAwayValue) : null,
               status: "completed",
             }
           : currentMatch,
@@ -212,6 +238,8 @@ export function ResultsPageClient({ matches }: { matches: ResultsMatch[] }) {
       [match.id]: {
         home: homeScoreValue,
         away: awayScoreValue,
+        penaltyHome: needsPenalties ? penaltyHomeValue : "",
+        penaltyAway: needsPenalties ? penaltyAwayValue : "",
         status: "completed",
       },
     }));
@@ -246,6 +274,15 @@ export function ResultsPageClient({ matches }: { matches: ResultsMatch[] }) {
           const kickoff = formatKickoff(match.kickoffAt);
           const hasScore = match.homeScore !== null && match.awayScore !== null;
           const displayStatus = getDisplayStatus(match);
+          const editedHome = editedScores[match.id]?.home ?? String(match.homeScore ?? "");
+          const editedAway = editedScores[match.id]?.away ?? String(match.awayScore ?? "");
+          const showPenaltyInputs =
+            isAdmin &&
+            isKnockoutStage(match.stage) &&
+            editedHome !== "" &&
+            editedAway !== "" &&
+            Number(editedHome) === Number(editedAway);
+          const penaltySummary = formatPenaltySummary(match);
 
           return (
             <article
@@ -308,6 +345,8 @@ export function ResultsPageClient({ matches }: { matches: ResultsMatch[] }) {
                               [match.id]: {
                                 home: event.target.value,
                                 away: current[match.id]?.away ?? String(match.awayScore ?? ""),
+                                penaltyHome: current[match.id]?.penaltyHome ?? String(match.homePenaltyScore ?? ""),
+                                penaltyAway: current[match.id]?.penaltyAway ?? String(match.awayPenaltyScore ?? ""),
                               },
                             }))
                           }
@@ -325,6 +364,8 @@ export function ResultsPageClient({ matches }: { matches: ResultsMatch[] }) {
                               [match.id]: {
                                 home: current[match.id]?.home ?? String(match.homeScore ?? ""),
                                 away: event.target.value,
+                                penaltyHome: current[match.id]?.penaltyHome ?? String(match.homePenaltyScore ?? ""),
+                                penaltyAway: current[match.id]?.penaltyAway ?? String(match.awayPenaltyScore ?? ""),
                               },
                             }))
                           }
@@ -332,8 +373,15 @@ export function ResultsPageClient({ matches }: { matches: ResultsMatch[] }) {
                         />
                       </div>
                     ) : hasScore ? (
-                      <div className="text-2xl font-black">
-                        {match.homeScore} - {match.awayScore}
+                      <div>
+                        <div className="text-2xl font-black">
+                          {match.homeScore} - {match.awayScore}
+                        </div>
+                        {penaltySummary ? (
+                          <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.16em]" style={{ color: "var(--color-text-subtle)" }}>
+                            {penaltySummary}
+                          </div>
+                        ) : null}
                       </div>
                     ) : (
                       <div
@@ -362,19 +410,63 @@ export function ResultsPageClient({ matches }: { matches: ResultsMatch[] }) {
                     </div>
 
                     {isAdmin && (
-                      <button
-                        type="button"
-                        onClick={() => saveMatch(match)}
-                        className="mt-3 rounded-full px-4 py-2 text-xs font-bold transition hover:scale-105"
-                        style={{
-                          border: "1px solid var(--color-border-accent)",
-                          backgroundColor:
-                            "color-mix(in srgb, var(--color-accent) 22%, rgba(255,255,255,0.08))",
-                          color: "var(--color-text)",
-                        }}
-                      >
-                        Guardar resultado
-                      </button>
+                      <div className="mt-3 space-y-2">
+                        {showPenaltyInputs ? (
+                          <div className="flex items-center justify-center gap-2">
+                            <input
+                              type="number"
+                              value={editedScores[match.id]?.penaltyHome ?? String(match.homePenaltyScore ?? "")}
+                              onChange={(event) =>
+                                setEditedScores((current) => ({
+                                  ...current,
+                                  [match.id]: {
+                                    home: current[match.id]?.home ?? String(match.homeScore ?? ""),
+                                    away: current[match.id]?.away ?? String(match.awayScore ?? ""),
+                                    penaltyHome: event.target.value,
+                                    penaltyAway: current[match.id]?.penaltyAway ?? String(match.awayPenaltyScore ?? ""),
+                                  },
+                                }))
+                              }
+                              className="w-12 rounded px-2 py-1 text-center"
+                              aria-label={`Penales de ${match.home}`}
+                            />
+                            <span className="text-[11px]" style={{ color: "var(--color-text-subtle)" }}>
+                              pen
+                            </span>
+                            <input
+                              type="number"
+                              value={editedScores[match.id]?.penaltyAway ?? String(match.awayPenaltyScore ?? "")}
+                              onChange={(event) =>
+                                setEditedScores((current) => ({
+                                  ...current,
+                                  [match.id]: {
+                                    home: current[match.id]?.home ?? String(match.homeScore ?? ""),
+                                    away: current[match.id]?.away ?? String(match.awayScore ?? ""),
+                                    penaltyHome: current[match.id]?.penaltyHome ?? String(match.homePenaltyScore ?? ""),
+                                    penaltyAway: event.target.value,
+                                  },
+                                }))
+                              }
+                              className="w-12 rounded px-2 py-1 text-center"
+                              aria-label={`Penales de ${match.away}`}
+                            />
+                          </div>
+                        ) : null}
+
+                        <button
+                          type="button"
+                          onClick={() => saveMatch(match)}
+                          className="rounded-full px-4 py-2 text-xs font-bold transition hover:scale-105"
+                          style={{
+                            border: "1px solid var(--color-border-accent)",
+                            backgroundColor:
+                              "color-mix(in srgb, var(--color-accent) 22%, rgba(255,255,255,0.08))",
+                            color: "var(--color-text)",
+                          }}
+                        >
+                          Guardar resultado
+                        </button>
+                      </div>
                     )}
                   </div>
 

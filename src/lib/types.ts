@@ -170,6 +170,7 @@ export interface MatchPrediction {
   matchId: ID;
   userId: ID;
   predictedScore: ScoreValue;
+  predictedPenaltyWinner?: "home" | "away" | null;
   predictedAt: ISODateString;
   updatedAt?: ISODateString | null;
   pointsAwarded?: number | null;

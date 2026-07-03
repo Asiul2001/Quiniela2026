@@ -180,7 +180,38 @@ type EnrichedMatch = PredictionsPageData["matches"][number] & {
   liveCanCreate: boolean;
   liveLockState: "open" | "phase-creation-locked" | "match-locked";
   liveLockReason: string;
+  projectionReady?: boolean;
 };
+
+function getPredictedWinnerFromDraft(
+  match: Pick<EnrichedMatch, "home" | "away">,
+  draft: ScoreDraft | undefined,
+) {
+  const homeScore = draft?.home !== "" && draft?.home !== undefined ? Number(draft.home) : NaN;
+  const awayScore = draft?.away !== "" && draft?.away !== undefined ? Number(draft.away) : NaN;
+
+  if (!Number.isInteger(homeScore) || !Number.isInteger(awayScore)) {
+    return null;
+  }
+
+  if (homeScore > awayScore) {
+    return match.home;
+  }
+
+  if (awayScore > homeScore) {
+    return match.away;
+  }
+
+  if (draft?.penaltyWinner === "home") {
+    return match.home;
+  }
+
+  if (draft?.penaltyWinner === "away") {
+    return match.away;
+  }
+
+  return null;
+}
 
 function assignBestThirdPreviewSlots(
   templates: RoundOf32PreviewTemplate[],
@@ -371,7 +402,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
         const membership = await ensureLeagueMembershipForUser(user, userName);
         const { data: remotePredictions, error } = await supabase
           .from("predictions")
-          .select("match_id,predicted_home_score,predicted_away_score")
+          .select("match_id,predicted_home_score,predicted_away_score,predicted_penalty_winner")
           .eq("league_id", data.leagueId)
           .eq("member_id", membership.memberId);
 
@@ -394,7 +425,9 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                   ? String(prediction.predicted_away_score)
                   : "",
               penaltyWinner:
-                localDrafts[prediction.match_id]?.penaltyWinner ?? "",
+                prediction.predicted_penalty_winner ??
+                localDrafts[prediction.match_id]?.penaltyWinner ??
+                "",
             },
           ]),
         );
@@ -504,16 +537,61 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
     [data.leagueId, data.matches, existingPredictionIds, now],
   );
 
+  const projectedMatches = useMemo<EnrichedMatch[]>(() => {
+    const winnersByMatchNumber = new Map<number, string>();
+
+    return [...enrichedMatches]
+      .sort((left, right) => {
+        const leftMatchNumber = left.matchNumber ?? Number.MAX_SAFE_INTEGER;
+        const rightMatchNumber = right.matchNumber ?? Number.MAX_SAFE_INTEGER;
+
+        return (
+          leftMatchNumber - rightMatchNumber ||
+          new Date(left.kickoffAt).getTime() - new Date(right.kickoffAt).getTime()
+        );
+      })
+      .map((match) => {
+        const homeSourceMatch = extractWinnerMatchNumber(match.home);
+        const awaySourceMatch = extractWinnerMatchNumber(match.away);
+
+        const resolvedHome =
+          homeSourceMatch !== null ? winnersByMatchNumber.get(homeSourceMatch) ?? match.home : match.home;
+        const resolvedAway =
+          awaySourceMatch !== null ? winnersByMatchNumber.get(awaySourceMatch) ?? match.away : match.away;
+
+        const projectionReady =
+          match.stageKey === "group" ||
+          (!isPlaceholderKnockoutLabel(resolvedHome) && !isPlaceholderKnockoutLabel(resolvedAway));
+
+        const projectedMatch = {
+          ...match,
+          home: resolvedHome,
+          away: resolvedAway,
+          projectionReady,
+        };
+
+        if (projectionReady && match.matchNumber !== null) {
+          const predictedWinner = getPredictedWinnerFromDraft(projectedMatch, drafts[match.id]);
+
+          if (predictedWinner) {
+            winnersByMatchNumber.set(match.matchNumber, predictedWinner);
+          }
+        }
+
+        return projectedMatch;
+      });
+  }, [drafts, enrichedMatches]);
+
   const editableMatches = useMemo(
     () =>
-      enrichedMatches.filter((match) => {
+      projectedMatches.filter((match) => {
         if (match.stageKey === "group") {
           return true;
         }
 
-        return !(isPlaceholderKnockoutLabel(match.home) || isPlaceholderKnockoutLabel(match.away));
+        return Boolean(match.projectionReady);
       }),
-    [enrichedMatches],
+    [projectedMatches],
   );
 
   const unlockedMatches = useMemo(
@@ -1201,6 +1279,8 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
             match_id: match.id,
             predicted_home_score: Number(draft.home),
             predicted_away_score: Number(draft.away),
+            predicted_penalty_winner:
+              Number(draft.home) === Number(draft.away) ? draft.penaltyWinner || null : null,
             updated_at: new Date().toISOString(),
           };
         }),
@@ -1311,6 +1391,8 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
           match_id: matchId,
           predicted_home_score: Number(draft.home),
           predicted_away_score: Number(draft.away),
+          predicted_penalty_winner:
+            Number(draft.home) === Number(draft.away) ? draft.penaltyWinner || null : null,
           updated_at: new Date().toISOString(),
         },
         {

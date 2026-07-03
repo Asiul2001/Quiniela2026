@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { calculateDarkHorsePointsByMember } from "@/lib/server-bonus-scoring";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -83,7 +84,7 @@ function getAwards(stats: PlayerStat[]) {
 export default async function StatsPage() {
   if (!supabase) return null;
 
-  const [{ data: members }, { data: profiles }, { data: predictions }, { data: scores }, { data: matches }] =
+  const [{ data: members }, { data: profiles }, { data: predictions }, { data: scores }, { data: matches }, { data: teams }, { data: darkHorsePredictions }] =
     await Promise.all([
       supabase.from("league_members").select("id,user_id"),
       supabase.from("profiles").select("id,display_name"),
@@ -92,6 +93,8 @@ export default async function StatsPage() {
         .from("prediction_scores")
         .select("prediction_id,total_points,exact_score_points,goal_difference_points,outcome_points"),
       supabase.from("matches").select("id"),
+      supabase.from("teams").select("id,name,team_tier,tier"),
+      supabase.from("bonus_predictions").select("member_id,payload").eq("type", "dark_horse"),
     ]);
 
   const totalMatches = matches?.length ?? 0;
@@ -107,6 +110,11 @@ export default async function StatsPage() {
   );
 
   const statsByMember = new Map<string, PlayerStat>();
+  const darkHorsePointsByMember = calculateDarkHorsePointsByMember({
+    teams: teams ?? [],
+    matches: (matches ?? []) as any,
+    darkHorsePredictions: darkHorsePredictions ?? [],
+  });
 
   for (const member of members ?? []) {
     statsByMember.set(member.id, {
@@ -146,6 +154,12 @@ export default async function StatsPage() {
     if ((score.goal_difference_points ?? 0) > 0) stat.goalDifferences += 1;
     if ((score.outcome_points ?? 0) > 0) stat.correctOutcomes += 1;
     if ((score.total_points ?? 0) === 0) stat.zeroPointPredictions += 1;
+  }
+
+  for (const [memberId, breakdown] of darkHorsePointsByMember.entries()) {
+    const stat = statsByMember.get(memberId);
+    if (!stat) continue;
+    stat.totalPoints += breakdown.points;
   }
 
   const stats = Array.from(statsByMember.values())

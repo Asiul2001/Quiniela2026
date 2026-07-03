@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { PRIMARY_LEAGUE_SLUG } from "@/lib/app-config";
 import { normalizeMatchStatus } from "@/lib/match-status";
+import { calculateDarkHorsePointsByMember } from "@/lib/server-bonus-scoring";
 
 export type ResultsPrediction = {
   memberId: string;
@@ -11,6 +12,7 @@ export type ResultsPrediction = {
   outcomePoints: number;
   goalDifferencePoints: number;
   exactScorePoints: number;
+  bonusPoints: number;
   predictedHome: number | null;
   predictedAway: number | null;
 };
@@ -25,6 +27,8 @@ export type ResultsMatch = {
   status: string;
   homeScore: number | null;
   awayScore: number | null;
+  homePenaltyScore: number | null;
+  awayPenaltyScore: number | null;
   predictions: ResultsPrediction[];
 };
 
@@ -80,6 +84,7 @@ export async function getResultsPageData(): Promise<ResultsPageData> {
     { data: members },
     { data: profiles },
     { data: predictionScores },
+    { data: darkHorsePredictions },
   ] = await Promise.all([
     supabase
       .from("tournaments")
@@ -94,7 +99,7 @@ export async function getResultsPageData(): Promise<ResultsPageData> {
 
     supabase
       .from("matches")
-      .select("id,stage,kickoff_at,venue,status,home_team_id,away_team_id,home_score,away_score")
+      .select("id,stage,kickoff_at,venue,status,home_team_id,away_team_id,home_score,away_score,home_penalty_score,away_penalty_score")
       .eq("tournament_id", leagueTournament.tournament_id)
       .order("kickoff_at", { ascending: true }),
 
@@ -112,7 +117,13 @@ export async function getResultsPageData(): Promise<ResultsPageData> {
 
     supabase
       .from("prediction_scores")
-      .select("prediction_id,outcome_points,goal_difference_points,exact_score_points,total_points"),
+      .select("prediction_id,outcome_points,goal_difference_points,exact_score_points,bonus_points,total_points"),
+    supabase
+      .from("bonus_predictions")
+      .select("member_id,payload")
+      .eq("league_id", league.id)
+      .eq("tournament_id", leagueTournament.tournament_id)
+      .eq("type", "dark_horse"),
   ]);
 
   const teamMap = new Map((teams ?? []).map((team) => [team.id, team.name.trim()]));
@@ -140,12 +151,18 @@ export async function getResultsPageData(): Promise<ResultsPageData> {
       outcomePoints: score.outcome_points ?? 0,
       goalDifferencePoints: score.goal_difference_points ?? 0,
       exactScorePoints: score.exact_score_points ?? 0,
+      bonusPoints: score.bonus_points ?? 0,
       totalPoints: score.total_points ?? 0,
     },
   ]),
 );
 
 const globalTotals = new Map<string, number>();
+  const darkHorsePointsByMember = calculateDarkHorsePointsByMember({
+    teams: teams ?? [],
+    matches: matches ?? [],
+    darkHorsePredictions: darkHorsePredictions ?? [],
+  });
 
 for (const prediction of predictions ?? []) {
   const score = scoreByPrediction.get(prediction.id);
@@ -155,6 +172,10 @@ for (const prediction of predictions ?? []) {
     prediction.member_id,
     current + (score?.totalPoints ?? 0),
   );
+}
+
+for (const [memberId, breakdown] of darkHorsePointsByMember.entries()) {
+  globalTotals.set(memberId, (globalTotals.get(memberId) ?? 0) + breakdown.points);
 }
 
 const globalRanks = new Map<string, number>();
@@ -182,6 +203,7 @@ list.push({
   outcomePoints: score?.outcomePoints ?? 0,
   goalDifferencePoints: score?.goalDifferencePoints ?? 0,
   exactScorePoints: score?.exactScorePoints ?? 0,
+  bonusPoints: score?.bonusPoints ?? 0,
   predictedHome: prediction.predicted_home_score,
   predictedAway: prediction.predicted_away_score,
 });
@@ -202,6 +224,8 @@ list.push({
       status: normalizeMatchStatus(match.status),
       homeScore: match.home_score,
       awayScore: match.away_score,
+      homePenaltyScore: match.home_penalty_score,
+      awayPenaltyScore: match.away_penalty_score,
       predictions: (predictionsByMatch.get(match.id) ?? []).sort((a, b) => {
   if (b.matchPoints !== a.matchPoints) return b.matchPoints - a.matchPoints;
   return a.globalRank - b.globalRank;

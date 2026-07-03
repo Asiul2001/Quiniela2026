@@ -1,5 +1,6 @@
 import { PRIMARY_LEAGUE_NAME, PRIMARY_LEAGUE_SLUG } from "@/lib/app-config";
 import { getResolvedMatchStatus, isUpcomingMatchStatus } from "@/lib/match-status";
+import { calculateDarkHorsePointsByMember } from "@/lib/server-bonus-scoring";
 import { hasSupabaseEnv as hasSupabaseClientEnv, supabase } from "@/lib/supabase";
 
 export type HomePageMatch = {
@@ -194,6 +195,7 @@ export async function getHomePageData(): Promise<HomePageData> {
       { data: members },
       { data: profiles },
       { data: predictions },
+      { data: darkHorsePredictions },
     ] = await Promise.all([
       client
         .from("tournaments")
@@ -220,6 +222,12 @@ export async function getHomePageData(): Promise<HomePageData> {
         .from("predictions")
         .select("member_id,match_id,prediction_scores(total_points)")
         .eq("league_id", league.id),
+      client
+        .from("bonus_predictions")
+        .select("member_id,payload")
+        .eq("league_id", league.id)
+        .eq("tournament_id", leagueTournament.tournament_id)
+        .eq("type", "dark_horse"),
     ]);
 
     const teamMap = new Map((teams ?? []).map((team) => [team.id, team.name]));
@@ -229,6 +237,11 @@ export async function getHomePageData(): Promise<HomePageData> {
         profile.display_name ?? profile.full_name ?? "Player",
       ]),
     );
+    const darkHorsePointsByMember = calculateDarkHorsePointsByMember({
+      teams: teams ?? [],
+      matches: matches ?? [],
+      darkHorsePredictions: darkHorsePredictions ?? [],
+    });
 
     const now = Date.now();
     const upcomingMatches = (matches ?? [])
@@ -297,7 +310,7 @@ export async function getHomePageData(): Promise<HomePageData> {
         const totalPoints = memberPredictions.reduce(
           (sum, prediction) => sum + extractTotalPoints(prediction as PredictionRow),
           0,
-        );
+        ) + (darkHorsePointsByMember.get(member.id)?.points ?? 0);
 
         const recentPoints = memberPredictions
           .filter((prediction) => completedMatchIds.has(prediction.match_id))
