@@ -651,20 +651,18 @@ async function getRoundOf32ClassificationBonuses(params: {
     let bonus = 0;
 
     if (projection.homeTeamId) {
-      if (actualQualifiedTeamIds.has(projection.homeTeamId)) {
-        bonus += 1;
-      }
       if (projection.homeTeamId === params.currentHomeTeamId) {
         bonus += 2;
+      } else if (actualQualifiedTeamIds.has(projection.homeTeamId)) {
+        bonus += 1;
       }
     }
 
     if (projection.awayTeamId) {
-      if (actualQualifiedTeamIds.has(projection.awayTeamId)) {
-        bonus += 1;
-      }
       if (projection.awayTeamId === params.currentAwayTeamId) {
         bonus += 2;
+      } else if (actualQualifiedTeamIds.has(projection.awayTeamId)) {
+        bonus += 1;
       }
     }
 

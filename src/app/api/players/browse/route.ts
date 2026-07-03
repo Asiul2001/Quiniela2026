@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { PRIMARY_LEAGUE_SLUG } from "@/lib/app-config";
-import { calculateDarkHorsePointsByMember } from "@/lib/server-bonus-scoring";
+import {
+  calculateDarkHorsePointsByMember,
+  calculateRoundOf32ProjectionBonusesByMember,
+} from "@/lib/server-bonus-scoring";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 
 type PredictionScoreShape =
@@ -125,7 +128,7 @@ export async function GET(request: Request) {
       admin.from("teams").select("id,name,team_tier").eq("tournament_id", leagueTournament?.tournament_id),
       admin
         .from("matches")
-        .select("id,stage,round_number,home_team_id,away_team_id,kickoff_at,venue,status,home_score,away_score,home_penalty_score,away_penalty_score")
+        .select("id,stage,round_number,match_number,home_team_id,away_team_id,kickoff_at,venue,status,home_score,away_score,home_penalty_score,away_penalty_score")
         .eq("tournament_id", leagueTournament?.tournament_id)
         .order("kickoff_at", { ascending: true }),
       admin
@@ -173,6 +176,18 @@ export async function GET(request: Request) {
       matches: matches ?? [],
       darkHorsePredictions: darkHorsePredictions ?? [],
     });
+    const roundOf32ProjectionBreakdownByMember = calculateRoundOf32ProjectionBonusesByMember({
+      groupMatches: (matches ?? []).filter((match) => match.stage === "group"),
+      roundOf32Matches: (matches ?? []).filter((match) => match.stage === "round_of_32"),
+      groupPredictions: (predictions ?? [])
+        .filter((prediction) => matchMap.get(prediction.match_id)?.stage === "group")
+        .map((prediction) => ({
+          member_id: prediction.member_id,
+          match_id: prediction.match_id,
+          predicted_home_score: prediction.predicted_home_score,
+          predicted_away_score: prediction.predicted_away_score,
+        })),
+    });
 
     for (const prediction of predictions ?? []) {
       const match = matchMap.get(prediction.match_id);
@@ -181,6 +196,7 @@ export async function GET(request: Request) {
       }
 
       const score = getPredictionScore(prediction.prediction_scores as PredictionScoreShape);
+      const basePoints = Math.max(0, score.totalPoints - score.bonusPoints);
 
       const playerPrediction = {
         matchId: match.id,
@@ -194,7 +210,7 @@ export async function GET(request: Request) {
         kickoffAt: match.kickoff_at,
         venue: match.venue ?? "TBD",
         status: match.status ?? "scheduled",
-        points: score.totalPoints,
+        points: basePoints,
         bonusPoints: score.bonusPoints,
       };
 
@@ -202,7 +218,7 @@ export async function GET(request: Request) {
       existing.push(playerPrediction);
       predictionsByMember.set(prediction.member_id, existing);
 
-      if (score.bonusPoints > 0) {
+      if (score.bonusPoints > 0 && match.stage !== "round_of_32") {
         const existingExtras = extraPointsByMember.get(prediction.member_id) ?? [];
         existingExtras.push({
           id: `projection-${prediction.id}`,
@@ -233,6 +249,35 @@ export async function GET(request: Request) {
       extraPointsByMember.set(memberId, existingExtras);
     }
 
+    for (const [memberId, breakdown] of roundOf32ProjectionBreakdownByMember.entries()) {
+      if (breakdown.totalPoints <= 0) {
+        continue;
+      }
+
+      const existingExtras = extraPointsByMember.get(memberId) ?? [];
+
+      for (const item of breakdown.items) {
+        if (item.points <= 0) {
+          continue;
+        }
+
+        const match = matchMap.get(item.matchId);
+        const homeName = teamMap.get(item.officialHomeTeamId) ?? "Home team";
+        const awayName = teamMap.get(item.officialAwayTeamId) ?? "Away team";
+
+        existingExtras.push({
+          id: `round-of-32-${memberId}-${item.matchId}`,
+          label: "Cruce proyectado",
+          detail: `Dieciseisavos · ${homeName} vs ${awayName}`,
+          points: item.points,
+          category: "projection_bonus",
+          kickoffAt: match?.kickoff_at ?? null,
+        });
+      }
+
+      extraPointsByMember.set(memberId, existingExtras);
+    }
+
     const totalMatches = Math.max((matches ?? []).length, 1);
     const playerSummaries = (members ?? [])
       .map((member) => {
@@ -254,7 +299,7 @@ export async function GET(request: Request) {
           id: member.id,
           userId: member.user_id,
           name: profileMap.get(member.user_id) ?? "Player",
-          points: matchPoints + darkHorsePoints,
+          points: matchPoints + extraPoints,
           completion: Math.round((memberPredictions.length / totalMatches) * 100),
           predictionsCount: memberPredictions.length,
           breakdown: {

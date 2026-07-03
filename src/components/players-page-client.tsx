@@ -90,6 +90,7 @@ export function PlayersPageClient() {
   const [playerPredictions, setPlayerPredictions] = useState<Record<string, PlayerPrediction[]>>({});
   const [playerExtraPoints, setPlayerExtraPoints] = useState<Record<string, PlayerExtraPoint[]>>({});
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+  const [extraPointsOpen, setExtraPointsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -134,6 +135,7 @@ export function PlayersPageClient() {
         setPlayerPredictions(payload.playerPredictions ?? {});
         setPlayerExtraPoints(payload.playerExtraPoints ?? {});
         setSelectedPlayerId((current) => current ?? payload.players?.[0]?.id ?? null);
+        setExtraPointsOpen(false);
         setError(null);
       } catch (err) {
         console.error(err);
@@ -295,7 +297,10 @@ export function PlayersPageClient() {
                       <button
                         key={player.id}
                         type="button"
-                        onClick={() => setSelectedPlayerId(player.id)}
+                        onClick={() => {
+                          setSelectedPlayerId(player.id);
+                          setExtraPointsOpen(false);
+                        }}
                         className="w-full rounded-[1.75rem] border px-4 py-4 text-left transition duration-200 hover:-translate-y-0.5"
                         style={{
                           borderColor: isSelected
@@ -412,14 +417,16 @@ export function PlayersPageClient() {
                   </div>
                 ) : null}
 
-                <div
+                <details
+                  open={extraPointsOpen}
+                  onToggle={(event) => setExtraPointsOpen((event.currentTarget as HTMLDetailsElement).open)}
                   className="mb-6 rounded-[1.75rem] p-4"
                   style={{
                     border: "1px solid var(--color-border-accent)",
                     backgroundColor: "rgba(255, 255, 255, 0.04)",
                   }}
                 >
-                  <div className="mb-4 flex items-center justify-between gap-3">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
                     <div>
                       <p
                         className="text-xs uppercase tracking-[0.18em]"
@@ -429,19 +436,28 @@ export function PlayersPageClient() {
                       </p>
                       <p className="mt-1 text-xl font-black">De dónde salen</p>
                     </div>
-                    <div
-                      className="rounded-full px-3 py-1 text-xs font-semibold"
-                      style={{
-                        border: "1px solid var(--color-border-accent)",
-                        backgroundColor: "rgba(255,255,255,0.06)",
-                        color: "var(--color-text-subtle)",
-                      }}
-                    >
-                      {selectedExtraPoints.reduce((sum, item) => sum + item.points, 0)} pts
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="rounded-full px-3 py-1 text-xs font-semibold"
+                        style={{
+                          border: "1px solid var(--color-border-accent)",
+                          backgroundColor: "rgba(255,255,255,0.06)",
+                          color: "var(--color-text-subtle)",
+                        }}
+                      >
+                        {selectedExtraPoints.reduce((sum, item) => sum + item.points, 0)} pts
+                      </div>
+                      <span
+                        className="text-xs uppercase tracking-[0.18em]"
+                        style={{ color: "var(--color-text-subtle)" }}
+                      >
+                        {extraPointsOpen ? "Ocultar" : "Mostrar"}
+                      </span>
                     </div>
-                  </div>
+                  </summary>
 
-                  {selectedExtraPoints.length === 0 ? (
+                  <div className="mt-4">
+                    {selectedExtraPoints.length === 0 ? (
                     <p className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
                       Todavía no hay puntos extra acumulados para este jugador.
                     </p>
@@ -470,6 +486,7 @@ export function PlayersPageClient() {
                     </div>
                   )}
                 </div>
+                </details>
 
                 <div
                   className="overflow-hidden rounded-[1.75rem]"
