@@ -93,7 +93,7 @@ export default async function StatsPage() {
         .from("prediction_scores")
         .select("prediction_id,total_points,exact_score_points,goal_difference_points,outcome_points"),
       supabase.from("matches").select("id"),
-      supabase.from("teams").select("id,name,team_tier,tier"),
+      supabase.from("teams").select("id,name,tier"),
       supabase.from("bonus_predictions").select("member_id,payload").eq("type", "dark_horse"),
     ]);
 

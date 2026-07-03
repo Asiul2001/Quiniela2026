@@ -122,7 +122,7 @@ export async function GET(request: Request) {
     ] = await Promise.all([
       admin.from("league_members").select("id,user_id").eq("league_id", league.id),
       admin.from("profiles").select("id,display_name,full_name"),
-      admin.from("teams").select("id,name,team_tier,tier").eq("tournament_id", leagueTournament?.tournament_id),
+      admin.from("teams").select("id,name,tier").eq("tournament_id", leagueTournament?.tournament_id),
       admin
         .from("matches")
         .select("id,stage,round_number,home_team_id,away_team_id,kickoff_at,venue,status,home_score,away_score,home_penalty_score,away_penalty_score")
