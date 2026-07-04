@@ -2,7 +2,9 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { PRIMARY_LEAGUE_SLUG } from "@/lib/app-config";
 import { getDisplayCountryName } from "@/lib/country-flags";
+import { ensureLaterKnockoutMatches } from "@/lib/knockout-generation";
 import { getPredictionLockState } from "@/lib/prediction-locking";
+import { getSupabaseAdmin, hasSupabaseAdminEnv } from "@/lib/supabase-admin";
 import { hasSupabaseEnv as hasSupabaseClientEnv, supabase } from "@/lib/supabase";
 import type { PhaseDeadline, Stage, TeamTier } from "@/lib/types";
 
@@ -162,29 +164,29 @@ const supplementalRoundOf16Fixtures: Array<{
     stage: "round_of_16",
     roundNumber: null,
     matchNumber: 89,
-    home: "Winner Match 74",
-    away: "Winner Match 77",
-    kickoffAt: "2026-07-04T19:00:00Z",
-    venue: "Lincoln Financial Field",
+    home: "Winner Match 73",
+    away: "Winner Match 76",
+    kickoffAt: "2026-07-04T17:00:00Z",
+    venue: "NRG Stadium",
   },
   {
     id: "supplemental-round-of-16-90",
     stage: "round_of_16",
     roundNumber: null,
     matchNumber: 90,
-    home: "Winner Match 73",
-    away: "Winner Match 75",
-    kickoffAt: "2026-07-04T23:00:00Z",
-    venue: "NRG Stadium",
+    home: "Winner Match 75",
+    away: "Winner Match 78",
+    kickoffAt: "2026-07-04T21:00:00Z",
+    venue: "Lincoln Financial Field",
   },
   {
     id: "supplemental-round-of-16-91",
     stage: "round_of_16",
     roundNumber: null,
     matchNumber: 91,
-    home: "Winner Match 76",
-    away: "Winner Match 78",
-    kickoffAt: "2026-07-05T19:00:00Z",
+    home: "Winner Match 74",
+    away: "Winner Match 77",
+    kickoffAt: "2026-07-05T20:00:00Z",
     venue: "MetLife Stadium",
   },
   {
@@ -194,7 +196,7 @@ const supplementalRoundOf16Fixtures: Array<{
     matchNumber: 92,
     home: "Winner Match 79",
     away: "Winner Match 80",
-    kickoffAt: "2026-07-05T23:00:00Z",
+    kickoffAt: "2026-07-06T00:00:00Z",
     venue: "Estadio Azteca",
   },
   {
@@ -202,8 +204,8 @@ const supplementalRoundOf16Fixtures: Array<{
     stage: "round_of_16",
     roundNumber: null,
     matchNumber: 93,
-    home: "Winner Match 83",
-    away: "Winner Match 84",
+    home: "Winner Match 84",
+    away: "Winner Match 83",
     kickoffAt: "2026-07-06T19:00:00Z",
     venue: "AT&T Stadium",
   },
@@ -212,9 +214,9 @@ const supplementalRoundOf16Fixtures: Array<{
     stage: "round_of_16",
     roundNumber: null,
     matchNumber: 94,
-    home: "Winner Match 81",
-    away: "Winner Match 82",
-    kickoffAt: "2026-07-06T23:00:00Z",
+    home: "Winner Match 82",
+    away: "Winner Match 81",
+    kickoffAt: "2026-07-07T00:00:00Z",
     venue: "Lumen Field",
   },
   {
@@ -222,9 +224,9 @@ const supplementalRoundOf16Fixtures: Array<{
     stage: "round_of_16",
     roundNumber: null,
     matchNumber: 95,
-    home: "Winner Match 86",
-    away: "Winner Match 88",
-    kickoffAt: "2026-07-07T19:00:00Z",
+    home: "Winner Match 87",
+    away: "Winner Match 86",
+    kickoffAt: "2026-07-07T16:00:00Z",
     venue: "Mercedes-Benz Stadium",
   },
   {
@@ -233,8 +235,8 @@ const supplementalRoundOf16Fixtures: Array<{
     roundNumber: null,
     matchNumber: 96,
     home: "Winner Match 85",
-    away: "Winner Match 87",
-    kickoffAt: "2026-07-07T23:00:00Z",
+    away: "Winner Match 88",
+    kickoffAt: "2026-07-07T20:00:00Z",
     venue: "BC Place",
   },
 ];
@@ -525,15 +527,15 @@ function createPredictionEntryMatch(params: {
 }
 
 function mergeSupplementalRoundOf16(matches: PredictionEntryMatch[]) {
-  const existingIds = new Set(matches.map((match) => match.id));
-  const hasRoundOf16 = matches.some((match) => match.stageKey === "round_of_16");
-
-  if (hasRoundOf16) {
-    return matches;
-  }
+  const existingMatchNumbers = new Set(
+    matches
+      .filter((match) => match.stageKey === "round_of_16")
+      .map((match) => match.matchNumber)
+      .filter((matchNumber): matchNumber is number => matchNumber !== null),
+  );
 
   const supplementalMatches = supplementalRoundOf16Fixtures
-    .filter((fixture) => !existingIds.has(fixture.id))
+    .filter((fixture) => !existingMatchNumbers.has(fixture.matchNumber))
     .map((fixture) =>
       createPredictionEntryMatch({
         ...fixture,
@@ -550,14 +552,10 @@ function mergeSupplementalRoundOf16(matches: PredictionEntryMatch[]) {
 function mergeFallbackRoundOf32Fixtures(matches: PredictionEntryMatch[]) {
   const existingMatchNumbers = new Set(
     matches
+      .filter((match) => match.stageKey === "round_of_32")
       .map((match) => match.matchNumber)
       .filter((matchNumber): matchNumber is number => matchNumber !== null),
   );
-  const hasRoundOf32 = matches.some((match) => match.stageKey === "round_of_32");
-
-  if (hasRoundOf32) {
-    return matches;
-  }
 
   const supplementalMatches = fallbackRoundOf32OfficialFixtures
     .filter((fixture) => !existingMatchNumbers.has(fixture.matchNumber))
@@ -573,9 +571,16 @@ function mergeFallbackRoundOf32Fixtures(matches: PredictionEntryMatch[]) {
   );
 }
 
-function deriveGroupAssignments(matches: Array<{ stage: Stage; homeTeamId: string; awayTeamId: string; kickoffAt: string }>) {
+function deriveGroupAssignments(matches: Array<{
+  stage: Stage;
+  homeTeamId: string;
+  awayTeamId: string;
+  kickoffAt: string;
+  matchNumber?: number | null;
+}>) {
   const adjacency = new Map<string, Set<string>>();
   const earliestKickoff = new Map<string, number>();
+  const earliestMatchNumber = new Map<string, number>();
 
   for (const match of matches) {
     if (match.stage !== "group") {
@@ -598,12 +603,25 @@ function deriveGroupAssignments(matches: Array<{ stage: Stage; homeTeamId: strin
       }
     };
 
+    const updateMatchNumber = (teamId: string) => {
+      if (match.matchNumber == null) {
+        return;
+      }
+
+      const previous = earliestMatchNumber.get(teamId);
+      if (previous === undefined || match.matchNumber < previous) {
+        earliestMatchNumber.set(teamId, match.matchNumber);
+      }
+    };
+
     updateKickoff(home);
     updateKickoff(away);
+    updateMatchNumber(home);
+    updateMatchNumber(away);
   }
 
   const visited = new Set<string>();
-  const groups: Array<{ teams: string[]; earliestKickoff: number }> = [];
+  const groups: Array<{ teams: string[]; earliestKickoff: number; earliestMatchNumber: number }> = [];
 
   for (const teamId of adjacency.keys()) {
     if (visited.has(teamId)) {
@@ -628,10 +646,25 @@ function deriveGroupAssignments(matches: Array<{ stage: Stage; homeTeamId: strin
     const kickoff = Math.min(
       ...component.map((id) => earliestKickoff.get(id) ?? Number.MAX_SAFE_INTEGER),
     );
-    groups.push({ teams: component, earliestKickoff: kickoff });
+    const matchNumber = Math.min(
+      ...component.map((id) => earliestMatchNumber.get(id) ?? Number.MAX_SAFE_INTEGER),
+    );
+
+    groups.push({
+      teams: component,
+      earliestKickoff: kickoff,
+      earliestMatchNumber: matchNumber,
+    });
   }
 
-  groups.sort((a, b) => a.earliestKickoff - b.earliestKickoff);
+  groups.sort((a, b) => {
+    const byMatchNumber = a.earliestMatchNumber - b.earliestMatchNumber;
+    if (Number.isFinite(byMatchNumber) && byMatchNumber !== 0) {
+      return byMatchNumber;
+    }
+
+    return a.earliestKickoff - b.earliestKickoff;
+  });
 
   const groupAssignments = new Map<string, string>();
   for (let index = 0; index < groups.length; index += 1) {
@@ -811,6 +844,17 @@ export async function getPredictionsPageData(): Promise<PredictionsPageData> {
       };
     }
 
+    if (hasSupabaseAdminEnv) {
+      try {
+        await ensureLaterKnockoutMatches({
+          client: getSupabaseAdmin(),
+          tournamentId: leagueTournament.tournament_id,
+        });
+      } catch (error) {
+        console.error("Unable to ensure knockout matches before loading predictions page", error);
+      }
+    }
+
     const [
       { data: tournament },
       { data: teams },
@@ -865,11 +909,17 @@ const teamOptions: TeamOptions[] = (teams ?? []).map((team) => ({
         (match) =>
           match.status === "scheduled" ||
           match.status === "live" ||
-          match.stage === "group",
+          match.stage === "group" ||
+          match.stage === "round_of_32" ||
+          match.stage === "round_of_16" ||
+          match.stage === "quarter_final" ||
+          match.stage === "semi_final" ||
+          match.stage === "final",
       )
       .map((match) => ({
         id: match.id,
         stage: match.stage,
+        matchNumber: match.match_number ?? null,
         homeTeamId: match.home_team_id,
         awayTeamId: match.away_team_id,
         kickoffAt: match.kickoff_at,
@@ -882,7 +932,12 @@ const teamOptions: TeamOptions[] = (teams ?? []).map((team) => ({
         (match) =>
           match.status === "scheduled" ||
           match.status === "live" ||
-          match.stage === "group",
+          match.stage === "group" ||
+          match.stage === "round_of_32" ||
+          match.stage === "round_of_16" ||
+          match.stage === "quarter_final" ||
+          match.stage === "semi_final" ||
+          match.stage === "final",
       )
       .map((match) => {
         const matchNumber = match.match_number ?? null;

@@ -1,7 +1,9 @@
 import { supabase } from "@/lib/supabase";
 import { PRIMARY_LEAGUE_SLUG } from "@/lib/app-config";
+import { ensureLaterKnockoutMatches } from "@/lib/knockout-generation";
 import { normalizeMatchStatus } from "@/lib/match-status";
 import { calculateDarkHorsePointsByMember } from "@/lib/server-bonus-scoring";
+import { getSupabaseAdmin, hasSupabaseAdminEnv } from "@/lib/supabase-admin";
 
 export type ResultsPrediction = {
   memberId: string;
@@ -142,6 +144,17 @@ export async function getResultsPageData(): Promise<ResultsPageData> {
       tournamentName: "FIFA World Cup 2026",
       matches: [],
     };
+  }
+
+  if (hasSupabaseAdminEnv) {
+    try {
+      await ensureLaterKnockoutMatches({
+        client: getSupabaseAdmin(),
+        tournamentId: leagueTournament.tournament_id,
+      });
+    } catch (error) {
+      console.error("Unable to ensure knockout matches before loading results page", error);
+    }
   }
 
   const [
