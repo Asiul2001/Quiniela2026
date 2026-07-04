@@ -7,11 +7,12 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ensureLeagueMembershipForUser, getUserDisplayName } from "@/lib/auth";
 import { getCountryFlagUrl } from "@/lib/country-flags";
+import { KNOCKOUT_GENERATION_TEMPLATES } from "@/lib/knockout-generation";
 import { getLocalPredictions, saveLocalPrediction } from "@/lib/local-predictions";
 import { getPredictionLockState } from "@/lib/prediction-locking";
 import { supabase } from "@/lib/supabase";
 import type { PredictionsPageData } from "@/lib/predictions-page-data";
-import type { PhaseDeadline } from "@/lib/types";
+import type { PhaseDeadline, Stage } from "@/lib/types";
 import { useAuthUser } from "@/hooks/use-auth-user";
 
 function formatLocalMatchTime(kickoffAt: string) {
@@ -167,7 +168,7 @@ type DensityMode = "wide" | "compact";
 type MatchStatusFilter = "all" | "unanswered" | "saved";
 type StageFilter = "all" | "group" | "roundOf32";
 
-type PageTab = "predictions" | "roundOf32Preview" | "roundOf16Preview";
+type PageTab = "predictions" | "roundOf32Preview" | "roundOf16Preview" | "quarterFinalPreview";
 
 type Toast = {
   id: number;
@@ -211,6 +212,25 @@ function getPredictedWinnerFromDraft(
   }
 
   return null;
+}
+
+function formatKnockoutPreviewTitle(stage: Stage) {
+  switch (stage) {
+    case "round_of_16":
+      return "Octavos";
+    case "quarter_final":
+      return "Cuartos";
+    case "semi_final":
+      return "Semifinal";
+    case "final":
+      return "Final";
+    default:
+      return "Cruce";
+  }
+}
+
+function formatProjectedWinnerPlaceholder(matchNumber: number) {
+  return `Ganador del partido ${matchNumber}`;
 }
 
 function assignBestThirdPreviewSlots(
@@ -1135,37 +1155,90 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
     return winners;
   }, [drafts, officialRoundOf32Matches]);
 
-  const roundOf16PreviewMatches = useMemo<RoundOf32PreviewMatch[]>(() => {
-    return data.matches
-      .filter((match) => match.stageKey === "round_of_16")
-      .sort((a, b) => new Date(a.kickoffAt).getTime() - new Date(b.kickoffAt).getTime())
-      .map((match) => {
-        const homeSourceMatch = extractWinnerMatchNumber(match.home);
-        const awaySourceMatch = extractWinnerMatchNumber(match.away);
+  const officialKnockoutMatchesByNumber = useMemo(
+    () =>
+      new Map(
+        data.matches
+          .filter((match) => isKnockoutStage(match.stageKey) && match.matchNumber !== null)
+          .map((match) => [match.matchNumber as number, match] as const),
+      ),
+    [data.matches],
+  );
 
-        const resolvedHome =
-          homeSourceMatch !== null
-            ? predictedRoundOf32Winners.get(homeSourceMatch) ?? match.home
-            : match.home;
-        const resolvedAway =
-          awaySourceMatch !== null
-            ? predictedRoundOf32Winners.get(awaySourceMatch) ?? match.away
-            : match.away;
+  const officialRoundOf16Matches = useMemo(
+    () => data.matches.filter((match) => match.stageKey === "round_of_16"),
+    [data.matches],
+  );
 
-        return {
-          id: `round-of-16-preview-${match.id}`,
-          matchNumber: match.matchNumber ?? 0,
-          stageLabel: match.stage,
-          sectionDateLabel: formatSectionDateLabel(match.kickoffAt),
-          dateLabel: formatLocalMatchDateLabel(match.kickoffAt),
-          timeLabel: formatLocalMatchTime(match.kickoffAt).time,
-          venue: match.venue,
-          home: resolvedHome,
-          away: resolvedAway,
-          note: "Cruce proyectado segun los ganadores que se desprenden de tus pronosticos de dieciseisavos.",
-        };
-      });
-  }, [data.matches, predictedRoundOf32Winners]);
+  const predictedRoundOf16Winners = useMemo(() => {
+    const winners = new Map<number, string>();
+
+    for (const match of officialRoundOf16Matches) {
+      if (match.matchNumber === null) {
+        continue;
+      }
+
+      const predictedWinner = getPredictedWinnerFromDraft(match, drafts[match.id]);
+      if (predictedWinner) {
+        winners.set(match.matchNumber, predictedWinner);
+      }
+    }
+
+    return winners;
+  }, [drafts, officialRoundOf16Matches]);
+
+  const buildKnockoutPreviewMatches = useCallback(
+    (
+      stage: Stage,
+      sourceWinnersByMatchNumber: Map<number, string>,
+      note: string,
+    ): RoundOf32PreviewMatch[] => {
+      return KNOCKOUT_GENERATION_TEMPLATES
+        .filter((template) => template.stage === stage)
+        .sort((a, b) => new Date(a.kickoffAt).getTime() - new Date(b.kickoffAt).getTime())
+        .map((template) => {
+          const officialMatch = officialKnockoutMatchesByNumber.get(template.matchNumber);
+
+          return {
+            id: `knockout-preview-${template.matchNumber}`,
+            matchNumber: template.matchNumber,
+            stageLabel: formatKnockoutPreviewTitle(stage),
+            sectionDateLabel: formatSectionDateLabel(template.kickoffAt),
+            dateLabel: formatLocalMatchDateLabel(template.kickoffAt),
+            timeLabel: formatLocalMatchTime(template.kickoffAt).time,
+            venue: officialMatch?.venue ?? template.venue,
+            home:
+              sourceWinnersByMatchNumber.get(template.homeSourceMatchNumber) ??
+              formatProjectedWinnerPlaceholder(template.homeSourceMatchNumber),
+            away:
+              sourceWinnersByMatchNumber.get(template.awaySourceMatchNumber) ??
+              formatProjectedWinnerPlaceholder(template.awaySourceMatchNumber),
+            note,
+          };
+        });
+    },
+    [officialKnockoutMatchesByNumber],
+  );
+
+  const roundOf16PreviewMatches = useMemo<RoundOf32PreviewMatch[]>(
+    () =>
+      buildKnockoutPreviewMatches(
+        "round_of_16",
+        predictedRoundOf32Winners,
+        "Cruce proyectado segun los ganadores que se desprenden de tus pronosticos de dieciseisavos.",
+      ),
+    [buildKnockoutPreviewMatches, predictedRoundOf32Winners],
+  );
+
+  const quarterFinalPreviewMatches = useMemo<RoundOf32PreviewMatch[]>(
+    () =>
+      buildKnockoutPreviewMatches(
+        "quarter_final",
+        predictedRoundOf16Winners,
+        "Cruce proyectado segun los ganadores que se desprenden de tus pronosticos de octavos.",
+      ),
+    [buildKnockoutPreviewMatches, predictedRoundOf16Winners],
+  );
 
   const groupedRoundOf16Preview = useMemo(() => {
     const groups = new Map<string, { title: string; subtitle: string; matches: RoundOf32PreviewMatch[] }>();
@@ -1187,6 +1260,27 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
 
     return Array.from(groups.values());
   }, [roundOf16PreviewMatches]);
+
+  const groupedQuarterFinalPreview = useMemo(() => {
+    const groups = new Map<string, { title: string; subtitle: string; matches: RoundOf32PreviewMatch[] }>();
+
+    for (const match of quarterFinalPreviewMatches) {
+      const existing = groups.get(match.sectionDateLabel);
+
+      if (existing) {
+        existing.matches.push(match);
+        continue;
+      }
+
+      groups.set(match.sectionDateLabel, {
+        title: "Cuartos",
+        subtitle: match.sectionDateLabel,
+        matches: [match],
+      });
+    }
+
+    return Array.from(groups.values());
+  }, [quarterFinalPreviewMatches]);
 
   function updateDraft(matchId: string, side: "home" | "away", value: string) {
     if (value !== "" && !/^\d+$/.test(value)) return;
@@ -1661,6 +1755,17 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                 >
                   Cruces de octavos
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setPageTab("quarterFinalPreview")}
+                  className="rounded-full px-4 py-2 text-sm font-semibold transition duration-200"
+                  style={{
+                    backgroundColor: pageTab === "quarterFinalPreview" ? "color-mix(in srgb, var(--color-accent) 16%, transparent)" : "transparent",
+                    color: "var(--color-text)",
+                  }}
+                >
+                  Cruces de cuartos
+                </button>
               </div>
             </div>
           </div>
@@ -1678,7 +1783,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                   Ordena, busca y reduce la lista para ver todos los partidos más rápido.
                 </p>
               </div>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
                 <label className="block relative">
                   <span className="sr-only">Estado</span>
                   <select
@@ -1689,6 +1794,21 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                     <option value="all">Todos los estados</option>
                     <option value="unanswered">Sin respuesta</option>
                     <option value="saved">Guardados</option>
+                  </select>
+                  <ChevronDown
+                    className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300"
+                  />
+                </label>
+                <label className="block relative">
+                  <span className="sr-only">Fase</span>
+                  <select
+                    value={selectedStage}
+                    onChange={(event) => setSelectedStage(event.target.value as StageFilter)}
+                    className="w-full appearance-none rounded-2xl border border-white/10 bg-slate-950/70 px-3 py-2 pr-10 text-sm text-white outline-none transition duration-200"
+                  >
+                    <option value="all">Todas las fases</option>
+                    <option value="group">Fase de grupos</option>
+                    <option value="roundOf32">Dieciseisavos</option>
                   </select>
                   <ChevronDown
                     className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300"
@@ -2116,7 +2236,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                     )}
                   </div>
                 </section>
-              ) : (
+          ) : pageTab === "roundOf16Preview" ? (
                 <section className="grid gap-8">
                   <div
                     className="rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-lg shadow-black/10"
@@ -2140,6 +2260,65 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                   ) : (
                     groupedRoundOf16Preview.map((group) => (
                       <div key={`round16-${group.subtitle}`} className="space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p
+                              className="text-xs font-semibold uppercase tracking-[0.24em]"
+                              style={{ color: "var(--color-text-subtle)" }}
+                            >
+                              Resultado proyectado
+                            </p>
+                            <h2 className="text-2xl font-black text-white">{group.subtitle}</h2>
+                          </div>
+
+                          <p className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
+                            {group.matches.length} partidos
+                          </p>
+                        </div>
+
+                        <div
+                          className={
+                            densityMode === "compact"
+                              ? "grid gap-3 sm:grid-cols-2"
+                              : "grid gap-5"
+                          }
+                        >
+                          {group.matches.map((match) =>
+                            densityMode === "compact" ? (
+                              <CompactPreviewCard key={match.id} match={match} />
+                            ) : (
+                              <PreviewProjectionCard key={match.id} match={match} />
+                            ),
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </section>
+              ) : (
+                <section className="grid gap-8">
+                  <div
+                    className="rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-lg shadow-black/10"
+                    style={{ backgroundColor: "rgba(255, 255, 255, 0.06)" }}
+                  >
+                    <div className="flex flex-col gap-2">
+                      <p className="text-sm font-semibold uppercase tracking-[0.24em]" style={{ color: "var(--color-text-subtle)" }}>
+                        Cruces
+                      </p>
+                      <h2 className="text-2xl font-black text-white">Asi se verian los cuartos</h2>
+                      <p className="text-sm leading-6" style={{ color: "var(--color-text-subtle)" }}>
+                        Esta pestaña toma los ganadores que se desprenden de tus pronosticos de octavos y arma automaticamente los cuartos. Esta vista tambien importa para los puntos por equipos que avanzan.
+                      </p>
+                    </div>
+                  </div>
+
+                  {groupedQuarterFinalPreview.length === 0 ? (
+                    <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-center text-slate-300">
+                      Completa tus pronosticos de octavos para ver como se formarian los cuartos.
+                    </div>
+                  ) : (
+                    groupedQuarterFinalPreview.map((group) => (
+                      <div key={`quarter-${group.subtitle}`} className="space-y-4">
                         <div className="flex items-center justify-between">
                           <div>
                             <p
