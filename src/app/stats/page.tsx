@@ -1,8 +1,35 @@
-import { supabase } from "@/lib/supabase";
-import { calculateDarkHorsePointsByMember } from "@/lib/server-bonus-scoring";
 import Link from "next/link";
+import { PRIMARY_LEAGUE_SLUG } from "@/lib/app-config";
+import { calculateDarkHorsePointsByMember } from "@/lib/server-bonus-scoring";
+import { getSupabaseAdmin } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
+
+type PredictionScoreShape =
+  | {
+      total_points?: number | null;
+      exact_score_points?: number | null;
+      goal_difference_points?: number | null;
+      outcome_points?: number | null;
+      bonus_points?: number | null;
+    }
+  | Array<{
+      total_points?: number | null;
+      exact_score_points?: number | null;
+      goal_difference_points?: number | null;
+      outcome_points?: number | null;
+      bonus_points?: number | null;
+    }>
+  | null;
+
+type LeaguePredictionRow = {
+  id: string;
+  member_id: string;
+  match_id: string;
+  predicted_home_score: number | null;
+  predicted_away_score: number | null;
+  prediction_scores: PredictionScoreShape;
+};
 
 type PlayerStat = {
   memberId: string;
@@ -21,6 +48,8 @@ type PlayerStat = {
   pointsPerPrediction: number;
 };
 
+const PAGE_SIZE = 1000;
+
 function pct(value: number) {
   return `${Math.round(value)}%`;
 }
@@ -34,20 +63,73 @@ function getTop(stats: PlayerStat[], selector: (player: PlayerStat) => number) {
   return [...stats].sort((a, b) => selector(b) - selector(a))[0];
 }
 
+function getPredictionScore(predictionScores: PredictionScoreShape) {
+  if (!predictionScores) {
+    return {
+      hasScoreRow: false,
+      totalPoints: 0,
+      exactScorePoints: 0,
+      goalDifferencePoints: 0,
+      outcomePoints: 0,
+      bonusPoints: 0,
+    };
+  }
+
+  const row = Array.isArray(predictionScores) ? predictionScores[0] : predictionScores;
+
+  return {
+    hasScoreRow: true,
+    totalPoints: row?.total_points ?? 0,
+    exactScorePoints: row?.exact_score_points ?? 0,
+    goalDifferencePoints: row?.goal_difference_points ?? 0,
+    outcomePoints: row?.outcome_points ?? 0,
+    bonusPoints: row?.bonus_points ?? 0,
+  };
+}
+
+async function fetchAllLeaguePredictions(admin: ReturnType<typeof getSupabaseAdmin>, leagueId: string) {
+  const rows: LeaguePredictionRow[] = [];
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await admin
+      .from("predictions")
+      .select(
+        "id,member_id,match_id,predicted_home_score,predicted_away_score,prediction_scores(total_points,exact_score_points,goal_difference_points,outcome_points,bonus_points)",
+      )
+      .eq("league_id", leagueId)
+      .range(from, from + PAGE_SIZE - 1);
+
+    if (error) {
+      throw error;
+    }
+
+    rows.push(...((data ?? []) as LeaguePredictionRow[]));
+
+    if (!data || data.length < PAGE_SIZE) {
+      break;
+    }
+
+    from += PAGE_SIZE;
+  }
+
+  return rows;
+}
+
 function getAwards(stats: PlayerStat[]) {
   return [
     {
       emoji: "👑",
-      title: "Líder de la quiniela",
+      title: "Lider de la quiniela",
       player: getTop(stats, (p) => p.totalPoints),
-      text: "Va ganando y probablemente ya está insoportable.",
+      text: "Va ganando y probablemente ya esta insoportable.",
       value: (p: PlayerStat) => `${p.totalPoints} pts`,
     },
     {
       emoji: "🔮",
       title: "Nostradamus familiar",
       player: getTop(stats, (p) => p.exactScores),
-      text: "Más marcadores exactos. Sospechoso, pero respetable.",
+      text: "Mas marcadores exactos. Sospechoso, pero respetable.",
       value: (p: PlayerStat) => `${p.exactScores} exactos`,
     },
     {
@@ -59,21 +141,21 @@ function getAwards(stats: PlayerStat[]) {
     },
     {
       emoji: "📝",
-      title: "El más aplicado",
+      title: "El mas aplicado",
       player: getTop(stats, (p) => p.predictions),
-      text: "Ha hecho más predicciones. Aquí sí vino a jugar.",
+      text: "Ha hecho mas predicciones. Aqui si vino a jugar.",
       value: (p: PlayerStat) => `${p.predictions} predicciones`,
     },
     {
       emoji: "🔥",
       title: "Mejor promedio",
       player: getTop(stats, (p) => p.pointsPerPrediction),
-      text: "Pocos o muchos partidos, pero está exprimiendo puntos.",
-      value: (p: PlayerStat) => `${p.pointsPerPrediction.toFixed(2)} pts/predicción`,
+      text: "Pocos o muchos partidos, pero esta exprimiendo puntos.",
+      value: (p: PlayerStat) => `${p.pointsPerPrediction.toFixed(2)} pts/prediccion`,
     },
     {
       emoji: "😅",
-      title: "No va a ganar, pero se la está pasando bien",
+      title: "No va a ganar, pero se la esta pasando bien",
       player: getTop(stats, (p) => p.zeroPointPredictions),
       text: "Muchas predicciones sin puntos. Pero la actitud cuenta.",
       value: (p: PlayerStat) => `${p.zeroPointPredictions} sin puntos`,
@@ -82,39 +164,70 @@ function getAwards(stats: PlayerStat[]) {
 }
 
 export default async function StatsPage() {
-  if (!supabase) return null;
+  let admin;
 
-  const [{ data: members }, { data: profiles }, { data: predictions }, { data: scores }, { data: matches }, { data: teams }, { data: darkHorsePredictions }] =
-    await Promise.all([
-      supabase.from("league_members").select("id,user_id"),
-      supabase.from("profiles").select("id,display_name"),
-      supabase.from("predictions").select("id,member_id"),
-      supabase
-        .from("prediction_scores")
-        .select("prediction_id,total_points,exact_score_points,goal_difference_points,outcome_points"),
-      supabase.from("matches").select("id"),
-      supabase.from("teams").select("id,name,team_tier"),
-      supabase.from("bonus_predictions").select("member_id,payload").eq("type", "dark_horse"),
-    ]);
+  try {
+    admin = getSupabaseAdmin();
+  } catch {
+    return null;
+  }
+
+  const { data: league, error: leagueError } = await admin
+    .from("leagues")
+    .select("id,name")
+    .eq("slug", PRIMARY_LEAGUE_SLUG)
+    .maybeSingle();
+
+  if (leagueError || !league?.id) {
+    return null;
+  }
+
+  const { data: leagueTournament, error: leagueTournamentError } = await admin
+    .from("league_tournaments")
+    .select("id,tournament_id")
+    .eq("league_id", league.id)
+    .limit(1)
+    .maybeSingle();
+
+  if (leagueTournamentError || !leagueTournament?.tournament_id) {
+    return null;
+  }
+
+  const [
+    { data: members },
+    { data: profiles },
+    { data: matches },
+    { data: teams },
+    { data: darkHorsePredictions },
+    predictions,
+  ] = await Promise.all([
+    admin.from("league_members").select("id,user_id").eq("league_id", league.id),
+    admin.from("profiles").select("id,display_name,full_name"),
+    admin
+      .from("matches")
+      .select("id,stage,match_number,home_team_id,away_team_id,home_score,away_score,home_penalty_score,away_penalty_score")
+      .eq("tournament_id", leagueTournament.tournament_id),
+    admin.from("teams").select("id,name,team_tier").eq("tournament_id", leagueTournament.tournament_id),
+    admin
+      .from("bonus_predictions")
+      .select("member_id,payload")
+      .eq("league_id", league.id)
+      .eq("tournament_id", leagueTournament.tournament_id)
+      .eq("type", "dark_horse"),
+    fetchAllLeaguePredictions(admin, league.id),
+  ]);
 
   const totalMatches = matches?.length ?? 0;
 
-  const userToName = new Map((profiles ?? []).map((profile) => [profile.id, profile.display_name]));
+  const userToName = new Map(
+    (profiles ?? []).map((profile) => [profile.id, profile.display_name ?? profile.full_name ?? "Jugador"]),
+  );
 
   const memberToName = new Map(
     (members ?? []).map((member) => [member.id, userToName.get(member.user_id) ?? "Jugador"]),
   );
 
-  const predictionToMember = new Map(
-    (predictions ?? []).map((prediction) => [prediction.id, prediction.member_id]),
-  );
-
   const statsByMember = new Map<string, PlayerStat>();
-  const darkHorsePointsByMember = calculateDarkHorsePointsByMember({
-    teams: teams ?? [],
-    matches: (matches ?? []) as any,
-    darkHorsePredictions: darkHorsePredictions ?? [],
-  });
 
   for (const member of members ?? []) {
     statsByMember.set(member.id, {
@@ -135,26 +248,41 @@ export default async function StatsPage() {
     });
   }
 
-  for (const prediction of predictions ?? []) {
+  for (const prediction of predictions) {
     const stat = statsByMember.get(prediction.member_id);
-    if (stat) stat.predictions += 1;
-  }
+    if (!stat) {
+      continue;
+    }
 
-  for (const score of scores ?? []) {
-    const memberId = predictionToMember.get(score.prediction_id);
-    if (!memberId) continue;
+    stat.predictions += 1;
 
-    const stat = statsByMember.get(memberId);
-    if (!stat) continue;
+    const score = getPredictionScore(prediction.prediction_scores);
+    if (!score.hasScoreRow) {
+      continue;
+    }
 
     stat.scoredPredictions += 1;
-    stat.totalPoints += score.total_points ?? 0;
+    stat.totalPoints += score.totalPoints;
 
-    if ((score.exact_score_points ?? 0) > 0) stat.exactScores += 1;
-    if ((score.goal_difference_points ?? 0) > 0) stat.goalDifferences += 1;
-    if ((score.outcome_points ?? 0) > 0) stat.correctOutcomes += 1;
-    if ((score.total_points ?? 0) === 0) stat.zeroPointPredictions += 1;
+    if (score.exactScorePoints > 0) stat.exactScores += 1;
+    if (score.goalDifferencePoints > 0) stat.goalDifferences += 1;
+    if (score.outcomePoints > 0) stat.correctOutcomes += 1;
+    if (score.totalPoints === 0) stat.zeroPointPredictions += 1;
   }
+
+  const darkHorsePointsByMember = calculateDarkHorsePointsByMember({
+    teams: teams ?? [],
+    matches: (matches ?? []) as Array<{
+      stage: any;
+      home_team_id: string;
+      away_team_id: string;
+      home_score?: number | null;
+      away_score?: number | null;
+      home_penalty_score?: number | null;
+      away_penalty_score?: number | null;
+    }>,
+    darkHorsePredictions: darkHorsePredictions ?? [],
+  });
 
   for (const [memberId, breakdown] of darkHorsePointsByMember.entries()) {
     const stat = statsByMember.get(memberId);
@@ -175,7 +303,6 @@ export default async function StatsPage() {
     .sort((a, b) => b.totalPoints - a.totalPoints);
 
   const awards = getAwards(stats);
-
   const totalPredictions = stats.reduce((sum, player) => sum + player.predictions, 0);
   const totalPoints = stats.reduce((sum, player) => sum + player.totalPoints, 0);
   const totalExact = stats.reduce((sum, player) => sum + player.exactScores, 0);
@@ -189,11 +316,11 @@ export default async function StatsPage() {
       <div className="mx-auto max-w-7xl space-y-8">
         <header>
           <p className="text-xs uppercase tracking-[0.28em]" style={{ color: "var(--color-text-subtle)" }}>
-            Familia Strassburger
+            {league.name}
           </p>
           <h1 className="mt-2 text-4xl font-black">Stats y premios</h1>
           <p className="mt-2 max-w-2xl" style={{ color: "var(--color-text-subtle)" }}>
-            Estadísticas serias, premios absurdos y reconocimiento para todos.
+            Estadisticas serias, premios absurdos y reconocimiento para todos.
           </p>
         </header>
 
@@ -258,33 +385,31 @@ export default async function StatsPage() {
                   <th>Exactos</th>
                   <th>Resultado correcto</th>
                   <th>Promedio</th>
-                  <th>Sin puntos</th>
+                  <th>Ceros</th>
                 </tr>
               </thead>
               <tbody>
                 {stats.map((player, index) => (
                   <tr key={player.memberId} className="border-t border-white/10">
-                    <td className="py-4 font-black">#{index + 1}</td>
-                    <td className="font-bold">{player.name}</td>
+                    <td className="py-3 font-black">#{index + 1}</td>
+                    <td className="font-semibold">{player.name}</td>
                     <td>{player.totalPoints}</td>
                     <td>{player.predictions}</td>
                     <td>{pct(player.completionPercentage)}</td>
-                    <td>
-                      {player.exactScores} · {pct(player.exactPercentage)}
-                    </td>
-                    <td>
-                      {player.correctOutcomes} · {pct(player.outcomePercentage)}
-                    </td>
+                    <td>{player.exactScores}</td>
+                    <td>{pct(player.outcomePercentage)}</td>
                     <td>{player.pointsPerPrediction.toFixed(2)}</td>
-                    <td>
-                      {player.zeroPointPredictions} · {pct(player.zeroPercentage)}
-                    </td>
+                    <td>{player.zeroPointPredictions}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         </section>
+
+        <Link href="/" className="inline-flex rounded-full border border-white/10 px-5 py-3 font-semibold">
+          Volver al inicio
+        </Link>
       </div>
     </main>
   );

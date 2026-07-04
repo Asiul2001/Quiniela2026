@@ -166,7 +166,7 @@ type ScoreDraft = {
 type ViewMode = "date" | "group";
 type DensityMode = "wide" | "compact";
 type MatchStatusFilter = "all" | "unanswered" | "saved";
-type StageFilter = "all" | "group" | "roundOf32";
+type StageFilter = "all" | Stage;
 
 type PageTab = "predictions" | "roundOf32Preview" | "roundOf16Preview" | "quarterFinalPreview";
 
@@ -630,11 +630,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
 
   const filteredMatches = useMemo(() => {
     return editableMatches.filter((match) => {
-      if (selectedStage === "group" && match.stageKey !== "group") {
-        return false;
-      }
-
-      if (selectedStage === "roundOf32" && match.stageKey !== "round_of_32") {
+      if (selectedStage !== "all" && match.stageKey !== selectedStage) {
         return false;
       }
 
@@ -1808,7 +1804,11 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                   >
                     <option value="all">Todas las fases</option>
                     <option value="group">Fase de grupos</option>
-                    <option value="roundOf32">Dieciseisavos</option>
+                    <option value="round_of_32">Dieciseisavos</option>
+                    <option value="round_of_16">Octavos</option>
+                    <option value="quarter_final">Cuartos</option>
+                    <option value="semi_final">Semifinal</option>
+                    <option value="final">Final</option>
                   </select>
                   <ChevronDown
                     className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300"
