@@ -43,6 +43,7 @@ type PlayerExtraPoint = {
   id: string;
   label: string;
   detail: string;
+  secondaryDetail?: string;
   points: number;
   category: "dark_horse" | "projection_bonus";
   kickoffAt?: string | null;
@@ -474,6 +475,11 @@ export function PlayersPageClient() {
                             <p className="mt-1 text-sm" style={{ color: "var(--color-text-subtle)" }}>
                               {item.detail}
                             </p>
+                            {item.secondaryDetail ? (
+                              <p className="mt-1 text-sm" style={{ color: "var(--color-text-subtle)" }}>
+                                {item.secondaryDetail}
+                              </p>
+                            ) : null}
                           </div>
                           <div className="text-right">
                             <p className="text-xl font-black">+{item.points}</p>

@@ -263,7 +263,7 @@ list.push({
   memberName,
   globalRank: globalRanks.get(memberId) ?? 999,
   globalPoints: globalTotals.get(memberId) ?? 0,
-  matchPoints: score?.totalPoints ?? 0,
+  matchPoints: Math.max(0, (score?.totalPoints ?? 0) - (score?.bonusPoints ?? 0)),
   outcomePoints: score?.outcomePoints ?? 0,
   goalDifferencePoints: score?.goalDifferencePoints ?? 0,
   exactScorePoints: score?.exactScorePoints ?? 0,

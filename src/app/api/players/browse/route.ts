@@ -261,10 +261,20 @@ export async function GET(request: Request) {
 
       if (score.bonusPoints > 0 && match.stage !== "round_of_32") {
         const existingExtras = extraPointsByMember.get(prediction.member_id) ?? [];
+        const actualScoreLabel =
+          match.home_score === null || match.away_score === null
+            ? "Sin resultado"
+            : `${match.home_score}-${match.away_score}${
+                match.home_penalty_score !== null && match.away_penalty_score !== null
+                  ? ` · penales ${match.home_penalty_score}-${match.away_penalty_score}`
+                  : ""
+              }`;
+
         existingExtras.push({
           id: `projection-${prediction.id}`,
           label: "Cruce o avance acertado",
-          detail: `${formatStageLabel(match.stage)} · ${playerPrediction.home} vs ${playerPrediction.away}`,
+          detail: `Pronosticado: ${playerPrediction.predictedHome ?? "-"}-${playerPrediction.predictedAway ?? "-"} · ${playerPrediction.home} vs ${playerPrediction.away}`,
+          secondaryDetail: `Real ${formatStageLabel(match.stage)}: ${actualScoreLabel} · ${playerPrediction.home} vs ${playerPrediction.away}`,
           points: score.bonusPoints,
           category: "projection_bonus",
           kickoffAt: match.kickoff_at,
@@ -303,13 +313,20 @@ export async function GET(request: Request) {
         }
 
         const match = matchMap.get(item.matchId);
+        const projectedHomeName = item.projectedHomeTeamId
+          ? teamMap.get(item.projectedHomeTeamId) ?? "Equipo"
+          : "Equipo";
+        const projectedAwayName = item.projectedAwayTeamId
+          ? teamMap.get(item.projectedAwayTeamId) ?? "Equipo"
+          : "Equipo";
         const homeName = teamMap.get(item.officialHomeTeamId) ?? "Home team";
         const awayName = teamMap.get(item.officialAwayTeamId) ?? "Away team";
 
         existingExtras.push({
           id: `round-of-32-${memberId}-${item.matchId}`,
           label: "Cruce proyectado",
-          detail: `Dieciseisavos · ${homeName} vs ${awayName}`,
+          detail: `Pronosticado: ${projectedHomeName} vs ${projectedAwayName}`,
+          secondaryDetail: `Real dieciseisavos: ${homeName} vs ${awayName}`,
           points: item.points,
           category: "projection_bonus",
           kickoffAt: match?.kickoff_at ?? null,
