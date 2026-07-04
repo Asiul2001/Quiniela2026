@@ -105,11 +105,13 @@ export async function getResultsPageData(): Promise<ResultsPageData> {
 
     supabase
       .from("predictions")
-      .select("id,match_id,member_id,predicted_home_score,predicted_away_score"),
+      .select("id,league_id,match_id,member_id,predicted_home_score,predicted_away_score")
+      .eq("league_id", league.id),
 
     supabase
       .from("league_members")
-      .select("id,user_id"),
+      .select("id,user_id")
+      .eq("league_id", league.id),
 
     supabase
       .from("profiles")
@@ -164,12 +166,13 @@ const globalTotals = new Map<string, number>();
     darkHorsePredictions: darkHorsePredictions ?? [],
   });
 
-for (const prediction of predictions ?? []) {
-  const score = scoreByPrediction.get(prediction.id);
-  const current = globalTotals.get(prediction.member_id) ?? 0;
+  for (const prediction of predictions ?? []) {
+    const score = scoreByPrediction.get(prediction.id);
+  const memberId = String(prediction.member_id).trim();
+  const current = globalTotals.get(memberId) ?? 0;
 
   globalTotals.set(
-    prediction.member_id,
+    memberId,
     current + (score?.totalPoints ?? 0),
   );
 }
@@ -187,7 +190,8 @@ Array.from(globalTotals.entries())
   });
 
   for (const prediction of predictions ?? []) {
-    const list = predictionsByMatch.get(prediction.match_id) ?? [];
+    const matchId = String(prediction.match_id).trim();
+    const list = predictionsByMatch.get(matchId) ?? [];
     const memberId = String(prediction.member_id).trim();
     const userId = memberToUser.get(memberId);
     const memberName = userToName.get(String(userId ?? "").trim()) ?? "Unknown";
@@ -208,7 +212,7 @@ list.push({
   predictedAway: prediction.predicted_away_score,
 });
 
-    predictionsByMatch.set(prediction.match_id, list);
+    predictionsByMatch.set(matchId, list);
   }
 
   return {
@@ -226,7 +230,7 @@ list.push({
       awayScore: match.away_score,
       homePenaltyScore: match.home_penalty_score,
       awayPenaltyScore: match.away_penalty_score,
-      predictions: (predictionsByMatch.get(match.id) ?? []).sort((a, b) => {
+      predictions: (predictionsByMatch.get(String(match.id).trim()) ?? []).sort((a, b) => {
   if (b.matchPoints !== a.matchPoints) return b.matchPoints - a.matchPoints;
   return a.globalRank - b.globalRank;
 }),
