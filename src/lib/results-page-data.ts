@@ -38,6 +38,74 @@ export type ResultsPageData = {
   matches: ResultsMatch[];
 };
 
+const PAGE_SIZE = 1000;
+
+async function fetchAllLeaguePredictions(leagueId: string) {
+  const rows: Array<{
+    id: string;
+    league_id: string;
+    match_id: string;
+    member_id: string;
+    predicted_home_score: number | null;
+    predicted_away_score: number | null;
+  }> = [];
+
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await supabase!
+      .from("predictions")
+      .select("id,league_id,match_id,member_id,predicted_home_score,predicted_away_score")
+      .eq("league_id", leagueId)
+      .range(from, from + PAGE_SIZE - 1);
+
+    if (error) {
+      throw error;
+    }
+
+    rows.push(...(data ?? []));
+
+    if (!data || data.length < PAGE_SIZE) {
+      break;
+    }
+
+    from += PAGE_SIZE;
+  }
+
+  return rows;
+}
+
+async function fetchPredictionScoresByPredictionIds(predictionIds: string[]) {
+  const rows: Array<{
+    prediction_id: string;
+    outcome_points: number | null;
+    goal_difference_points: number | null;
+    exact_score_points: number | null;
+    bonus_points: number | null;
+    total_points: number | null;
+  }> = [];
+
+  for (let index = 0; index < predictionIds.length; index += 200) {
+    const batch = predictionIds.slice(index, index + 200);
+    if (batch.length === 0) {
+      continue;
+    }
+
+    const { data, error } = await supabase!
+      .from("prediction_scores")
+      .select("prediction_id,outcome_points,goal_difference_points,exact_score_points,bonus_points,total_points")
+      .in("prediction_id", batch);
+
+    if (error) {
+      throw error;
+    }
+
+    rows.push(...(data ?? []));
+  }
+
+  return rows;
+}
+
 export async function getResultsPageData(): Promise<ResultsPageData> {
   if (!supabase) {
     return {
@@ -80,10 +148,8 @@ export async function getResultsPageData(): Promise<ResultsPageData> {
     { data: tournament },
     { data: teams },
     { data: matches },
-    { data: predictions },
     { data: members },
     { data: profiles },
-    { data: predictionScores },
     { data: darkHorsePredictions },
   ] = await Promise.all([
     supabase
@@ -104,11 +170,6 @@ export async function getResultsPageData(): Promise<ResultsPageData> {
       .order("kickoff_at", { ascending: true }),
 
     supabase
-      .from("predictions")
-      .select("id,league_id,match_id,member_id,predicted_home_score,predicted_away_score")
-      .eq("league_id", league.id),
-
-    supabase
       .from("league_members")
       .select("id,user_id")
       .eq("league_id", league.id),
@@ -116,10 +177,6 @@ export async function getResultsPageData(): Promise<ResultsPageData> {
     supabase
       .from("profiles")
       .select("id,display_name"),
-
-    supabase
-      .from("prediction_scores")
-      .select("prediction_id,outcome_points,goal_difference_points,exact_score_points,bonus_points,total_points"),
     supabase
       .from("bonus_predictions")
       .select("member_id,payload")
@@ -127,6 +184,9 @@ export async function getResultsPageData(): Promise<ResultsPageData> {
       .eq("tournament_id", leagueTournament.tournament_id)
       .eq("type", "dark_horse"),
   ]);
+
+  const predictions = await fetchAllLeaguePredictions(league.id);
+  const predictionScores = await fetchPredictionScoresByPredictionIds(predictions.map((prediction) => prediction.id));
 
   const teamMap = new Map((teams ?? []).map((team) => [team.id, team.name.trim()]));
 

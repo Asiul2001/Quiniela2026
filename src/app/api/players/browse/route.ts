@@ -66,6 +66,52 @@ function formatProgressLabel(progress: string) {
   return labels[progress] ?? progress;
 }
 
+const PAGE_SIZE = 1000;
+
+async function fetchAllLeaguePredictions(admin: ReturnType<typeof getSupabaseAdmin>, leagueId: string) {
+  const rows: Array<{
+    id: string;
+    member_id: string;
+    match_id: string;
+    predicted_home_score: number | null;
+    predicted_away_score: number | null;
+    prediction_scores:
+      | {
+          total_points?: number | null;
+          bonus_points?: number | null;
+        }
+      | Array<{
+          total_points?: number | null;
+          bonus_points?: number | null;
+        }>
+      | null;
+  }> = [];
+
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await admin
+      .from("predictions")
+      .select("id,member_id,match_id,predicted_home_score,predicted_away_score,prediction_scores(total_points,bonus_points)")
+      .eq("league_id", leagueId)
+      .range(from, from + PAGE_SIZE - 1);
+
+    if (error) {
+      throw error;
+    }
+
+    rows.push(...(data ?? []));
+
+    if (!data || data.length < PAGE_SIZE) {
+      break;
+    }
+
+    from += PAGE_SIZE;
+  }
+
+  return rows;
+}
+
 export async function GET(request: Request) {
   const token = readBearerToken(request);
   if (!token) {
@@ -120,7 +166,6 @@ export async function GET(request: Request) {
       { data: profiles, error: profilesError },
       { data: teams, error: teamsError },
       { data: matches, error: matchesError },
-      { data: predictions, error: predictionsError },
       { data: darkHorsePredictions, error: darkHorsePredictionsError },
     ] = await Promise.all([
       admin.from("league_members").select("id,user_id").eq("league_id", league.id),
@@ -131,10 +176,6 @@ export async function GET(request: Request) {
         .select("id,stage,round_number,match_number,home_team_id,away_team_id,kickoff_at,venue,status,home_score,away_score,home_penalty_score,away_penalty_score")
         .eq("tournament_id", leagueTournament?.tournament_id)
         .order("kickoff_at", { ascending: true }),
-      admin
-        .from("predictions")
-        .select("id,member_id,match_id,predicted_home_score,predicted_away_score,prediction_scores(total_points,bonus_points)")
-        .eq("league_id", league.id),
       admin
         .from("bonus_predictions")
         .select("member_id,payload")
@@ -149,7 +190,6 @@ export async function GET(request: Request) {
       profilesError ||
       teamsError ||
       matchesError ||
-      predictionsError ||
       darkHorsePredictionsError
     ) {
       const errorMessage =
@@ -158,10 +198,11 @@ export async function GET(request: Request) {
         profilesError?.message ||
         teamsError?.message ||
         matchesError?.message ||
-        predictionsError?.message ||
         darkHorsePredictionsError?.message;
       return NextResponse.json({ error: errorMessage ?? "Unable to load player browser data." }, { status: 500 });
     }
+
+    const predictions = await fetchAllLeaguePredictions(admin, league.id);
 
     const teamMap = new Map((teams ?? []).map((team) => [team.id, team.name]));
     const profileMap = new Map(
@@ -179,7 +220,7 @@ export async function GET(request: Request) {
     const roundOf32ProjectionBreakdownByMember = calculateRoundOf32ProjectionBonusesByMember({
       groupMatches: (matches ?? []).filter((match) => match.stage === "group"),
       roundOf32Matches: (matches ?? []).filter((match) => match.stage === "round_of_32"),
-      groupPredictions: (predictions ?? [])
+      groupPredictions: predictions
         .filter((prediction) => matchMap.get(prediction.match_id)?.stage === "group")
         .map((prediction) => ({
           member_id: prediction.member_id,
@@ -189,7 +230,7 @@ export async function GET(request: Request) {
         })),
     });
 
-    for (const prediction of predictions ?? []) {
+    for (const prediction of predictions) {
       const match = matchMap.get(prediction.match_id);
       if (!match) {
         continue;
