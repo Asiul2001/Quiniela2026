@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { PRIMARY_LEAGUE_SLUG } from "@/lib/app-config";
+import { buildLogicalMatchGroups } from "@/lib/match-deduplication";
 import {
   calculateDarkHorsePointsByMember,
   calculateRoundOf32ProjectionBonusesByMember,
@@ -173,7 +174,7 @@ export async function GET(request: Request) {
       admin.from("teams").select("id,name,team_tier").eq("tournament_id", leagueTournament?.tournament_id),
       admin
         .from("matches")
-        .select("id,stage,round_number,match_number,home_team_id,away_team_id,kickoff_at,venue,status,home_score,away_score,home_penalty_score,away_penalty_score")
+        .select("id,stage,round_number,match_number,home_team_id,away_team_id,kickoff_at,venue,status,updated_at,home_score,away_score,home_penalty_score,away_penalty_score")
         .eq("tournament_id", leagueTournament?.tournament_id)
         .order("kickoff_at", { ascending: true }),
       admin
@@ -203,35 +204,40 @@ export async function GET(request: Request) {
     }
 
     const predictions = await fetchAllLeaguePredictions(admin, league.id);
+    const { canonicalMatches, canonicalIdByMatchId } = buildLogicalMatchGroups(matches ?? []);
 
     const teamMap = new Map((teams ?? []).map((team) => [team.id, team.name]));
     const profileMap = new Map(
       (profiles ?? []).map((profile) => [profile.id, profile.display_name ?? profile.full_name ?? "Player"]),
     );
-    const matchMap = new Map((matches ?? []).map((match) => [match.id, match]));
+    const matchMap = new Map(canonicalMatches.map((match) => [match.id, match]));
     const predictionsByMember = new Map<string, Array<Record<string, unknown>>>();
     const extraPointsByMember = new Map<string, Array<Record<string, unknown>>>();
 
     const darkHorseBreakdownByMember = calculateDarkHorsePointsByMember({
       teams: teams ?? [],
-      matches: matches ?? [],
+      matches: canonicalMatches,
       darkHorsePredictions: darkHorsePredictions ?? [],
     });
     const roundOf32ProjectionBreakdownByMember = calculateRoundOf32ProjectionBonusesByMember({
-      groupMatches: (matches ?? []).filter((match) => match.stage === "group"),
-      roundOf32Matches: (matches ?? []).filter((match) => match.stage === "round_of_32"),
+      groupMatches: canonicalMatches.filter((match) => match.stage === "group"),
+      roundOf32Matches: canonicalMatches.filter((match) => match.stage === "round_of_32"),
       groupPredictions: predictions
-        .filter((prediction) => matchMap.get(prediction.match_id)?.stage === "group")
+        .filter((prediction) => {
+          const canonicalMatchId = canonicalIdByMatchId.get(prediction.match_id) ?? prediction.match_id;
+          return matchMap.get(canonicalMatchId)?.stage === "group";
+        })
         .map((prediction) => ({
           member_id: prediction.member_id,
-          match_id: prediction.match_id,
+          match_id: canonicalIdByMatchId.get(prediction.match_id) ?? prediction.match_id,
           predicted_home_score: prediction.predicted_home_score,
           predicted_away_score: prediction.predicted_away_score,
         })),
     });
 
     for (const prediction of predictions) {
-      const match = matchMap.get(prediction.match_id);
+      const canonicalMatchId = canonicalIdByMatchId.get(prediction.match_id) ?? prediction.match_id;
+      const match = matchMap.get(canonicalMatchId);
       if (!match) {
         continue;
       }
@@ -336,7 +342,7 @@ export async function GET(request: Request) {
       extraPointsByMember.set(memberId, existingExtras);
     }
 
-    const totalMatches = Math.max((matches ?? []).length, 1);
+    const totalMatches = Math.max(canonicalMatches.length, 1);
     const playerSummaries = (members ?? [])
       .map((member) => {
         const memberPredictions = predictionsByMember.get(member.id) ?? [];

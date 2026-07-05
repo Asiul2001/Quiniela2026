@@ -1,6 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { PRIMARY_LEAGUE_SLUG } from "@/lib/app-config";
 import { ensureLaterKnockoutMatches } from "@/lib/knockout-generation";
+import { buildLogicalMatchGroups } from "@/lib/match-deduplication";
 import { normalizeMatchStatus } from "@/lib/match-status";
 import { calculateDarkHorsePointsByMember } from "@/lib/server-bonus-scoring";
 import { getSupabaseAdmin, hasSupabaseAdminEnv } from "@/lib/supabase-admin";
@@ -178,7 +179,7 @@ export async function getResultsPageData(): Promise<ResultsPageData> {
 
     supabase
       .from("matches")
-      .select("id,stage,kickoff_at,venue,status,home_team_id,away_team_id,home_score,away_score,home_penalty_score,away_penalty_score")
+      .select("id,stage,match_number,kickoff_at,venue,status,updated_at,home_team_id,away_team_id,home_score,away_score,home_penalty_score,away_penalty_score")
       .eq("tournament_id", leagueTournament.tournament_id)
       .order("kickoff_at", { ascending: true }),
 
@@ -200,6 +201,7 @@ export async function getResultsPageData(): Promise<ResultsPageData> {
 
   const predictions = await fetchAllLeaguePredictions(league.id);
   const predictionScores = await fetchPredictionScoresByPredictionIds(predictions.map((prediction) => prediction.id));
+  const { canonicalMatches, canonicalIdByMatchId } = buildLogicalMatchGroups(matches ?? []);
 
   const teamMap = new Map((teams ?? []).map((team) => [team.id, team.name.trim()]));
 
@@ -232,10 +234,10 @@ export async function getResultsPageData(): Promise<ResultsPageData> {
   ]),
 );
 
-const globalTotals = new Map<string, number>();
+  const globalTotals = new Map<string, number>();
   const darkHorsePointsByMember = calculateDarkHorsePointsByMember({
     teams: teams ?? [],
-    matches: matches ?? [],
+    matches: canonicalMatches,
     darkHorsePredictions: darkHorsePredictions ?? [],
   });
 
@@ -263,7 +265,8 @@ Array.from(globalTotals.entries())
   });
 
   for (const prediction of predictions ?? []) {
-    const matchId = String(prediction.match_id).trim();
+    const rawMatchId = String(prediction.match_id).trim();
+    const matchId = canonicalIdByMatchId.get(rawMatchId) ?? rawMatchId;
     const list = predictionsByMatch.get(matchId) ?? [];
     const memberId = String(prediction.member_id).trim();
     const userId = memberToUser.get(memberId);
@@ -291,7 +294,7 @@ list.push({
   return {
     leagueName: league.name,
     tournamentName: tournament?.name ?? "FIFA World Cup 2026",
-    matches: (matches ?? []).map((match) => ({
+    matches: canonicalMatches.map((match) => ({
       id: match.id,
       home: teamMap.get(match.home_team_id) ?? "Home",
       away: teamMap.get(match.away_team_id) ?? "Away",

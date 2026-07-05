@@ -1,4 +1,5 @@
 import type { Stage } from "@/lib/types";
+import { buildLogicalMatchGroups, getLogicalMatchKey } from "@/lib/match-deduplication";
 
 export type KnockoutGenerationTemplate = {
   stage: Stage;
@@ -177,6 +178,10 @@ type StoredKnockoutMatch = {
   id: string;
   stage: Stage;
   match_number: number | null;
+  kickoff_at?: string | null;
+  venue?: string | null;
+  status?: string | null;
+  updated_at?: string | null;
   home_team_id: string;
   away_team_id: string;
   home_score: number | null;
@@ -191,7 +196,7 @@ export async function ensureLaterKnockoutMatches(params: {
 }) {
   const { data: knockoutMatches, error: knockoutMatchesError } = await params.client
     .from("matches")
-    .select("id,stage,match_number,home_team_id,away_team_id,home_score,away_score,home_penalty_score,away_penalty_score")
+    .select("id,stage,match_number,kickoff_at,venue,status,updated_at,home_team_id,away_team_id,home_score,away_score,home_penalty_score,away_penalty_score")
     .eq("tournament_id", params.tournamentId)
     .in("stage", ["round_of_32", "round_of_16", "quarter_final", "semi_final", "final"]);
 
@@ -199,8 +204,12 @@ export async function ensureLaterKnockoutMatches(params: {
     throw knockoutMatchesError;
   }
 
+  const { canonicalMatches, groupsByKey } = buildLogicalMatchGroups(
+    ((knockoutMatches ?? []) as StoredKnockoutMatch[]),
+  );
+
   const matchByNumber = new Map<number, StoredKnockoutMatch>(
-    ((knockoutMatches ?? []) as StoredKnockoutMatch[])
+    canonicalMatches
       .filter((match) => match.match_number !== null)
       .map((match) => [match.match_number as number, match] as const),
   );
@@ -223,6 +232,15 @@ export async function ensureLaterKnockoutMatches(params: {
     const existingMatch = matchByNumber.get(template.matchNumber);
 
     if (existingMatch) {
+      const existingRows =
+        groupsByKey.get(
+          getLogicalMatchKey({
+            id: existingMatch.id,
+            stage: template.stage,
+            match_number: template.matchNumber,
+          }),
+        ) ?? [existingMatch];
+
       if (
         existingMatch.home_team_id === homeTeamId &&
         existingMatch.away_team_id === awayTeamId
@@ -233,11 +251,22 @@ export async function ensureLaterKnockoutMatches(params: {
       const { error: updateError } = await params.client
         .from("matches")
         .update({
+          stage: template.stage,
+          kickoff_at: template.kickoffAt,
+          venue: template.venue,
           home_team_id: homeTeamId,
           away_team_id: awayTeamId,
+          home_score: null,
+          away_score: null,
+          home_penalty_score: null,
+          away_penalty_score: null,
+          status: "scheduled",
           updated_at: new Date().toISOString(),
         })
-        .eq("id", existingMatch.id);
+        .in(
+          "id",
+          existingRows.map((match) => match.id),
+        );
 
       if (updateError) {
         throw updateError;
@@ -245,8 +274,16 @@ export async function ensureLaterKnockoutMatches(params: {
 
       matchByNumber.set(template.matchNumber, {
         ...existingMatch,
+        stage: template.stage,
+        kickoff_at: template.kickoffAt,
+        venue: template.venue,
         home_team_id: homeTeamId,
         away_team_id: awayTeamId,
+        home_score: null,
+        away_score: null,
+        home_penalty_score: null,
+        away_penalty_score: null,
+        status: "scheduled",
       });
       continue;
     }

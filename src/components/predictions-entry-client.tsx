@@ -629,7 +629,9 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
   }, [drafts]);
 
   const filteredMatches = useMemo(() => {
-    return editableMatches.filter((match) => {
+    const matchesForFiltering = selectedStage === "all" ? editableMatches : projectedMatches;
+
+    return matchesForFiltering.filter((match) => {
       if (selectedStage !== "all" && match.stageKey !== selectedStage) {
         return false;
       }
@@ -661,7 +663,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
         match.stage.toLowerCase().includes(query)
       );
     });
-  }, [editableMatches, hasDraftResponse, savedMatchIds, searchQuery, selectedStage, showOpenOnly, statusFilter]);
+  }, [editableMatches, hasDraftResponse, projectedMatches, savedMatchIds, searchQuery, selectedStage, showOpenOnly, statusFilter]);
 
   const predictionStats = useMemo(() => {
     const total = editableMatches.length;
@@ -1717,7 +1719,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                   Separa los pronósticos editables de la vista previa de dieciseisavos.
                 </p>
               </div>
-              <div className="inline-flex rounded-full border border-white/10 bg-slate-950/70 p-1">
+              <div className="inline-flex flex-wrap rounded-full border border-white/10 bg-slate-950/70 p-1">
                 <button
                   type="button"
                   onClick={() => setPageTab("predictions")}
@@ -1779,7 +1781,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                   Ordena, busca y reduce la lista para ver todos los partidos más rápido.
                 </p>
               </div>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
                 <label className="block relative">
                   <span className="sr-only">Estado</span>
                   <select
@@ -1886,8 +1888,8 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                   <section
   className={
     densityMode === "compact"
-      ? "grid gap-6 xl:grid-cols-2 2xl:grid-cols-3"
-      : "grid gap-8"
+      ? "grid gap-4 xl:grid-cols-2 2xl:grid-cols-3"
+      : "grid gap-6 sm:gap-8"
   }
 >
                     {groupedMatches.length === 0 ? (
@@ -2435,19 +2437,19 @@ function TeamPanel({ name, align }: { name: string; align: "left" | "right" }) {
           <img
             src={flagUrl}
             alt={`${name} flag`}
-            className="h-6 w-8 rounded-sm object-cover"
+            className="h-5 w-7 rounded-sm object-cover sm:h-6 sm:w-8"
             width={32}
             height={24}
           />
         ) : null}
         <p
           title={name}
-          className="min-w-0 truncate text-base font-black text-white sm:text-2xl"
+          className="min-w-0 truncate text-sm font-black text-white sm:text-2xl"
         >
           {name}
         </p>
       </div>
-      <p className="mt-1 text-xs uppercase tracking-[0.18em]" style={{ color: "var(--color-text-subtle)" }}>
+      <p className="mt-1 hidden text-xs uppercase tracking-[0.18em] sm:block" style={{ color: "var(--color-text-subtle)" }}>
         Equipo
       </p>
     </div>
@@ -2695,7 +2697,7 @@ function DetailedPredictionCard({
     >
       <div className="flex flex-col gap-6">
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
             <span
               className="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]"
               style={{
@@ -2714,7 +2716,7 @@ function DetailedPredictionCard({
             </span>
           </div>
 
-          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 sm:gap-4">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 sm:gap-4">
             <TeamPanel name={match.home} align="right" />
             <div
               className="mx-auto rounded-full px-3 py-1 text-xs font-bold"
@@ -2737,7 +2739,7 @@ function DetailedPredictionCard({
             backgroundColor: "color-mix(in srgb, var(--color-secondary) 74%, transparent)",
           }}
         >
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
             <p className="text-sm font-semibold">Marcador pronosticado</p>
             {match.liveLockState !== "open" ? (
               <span
@@ -2768,7 +2770,7 @@ function DetailedPredictionCard({
             )}
           </div>
 
-          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-3">
             <ScoreInput
               label={`Marcador de ${match.home}`}
               value={draft.home}
@@ -2876,71 +2878,120 @@ function CompactPredictionCard({
 }) {
   const timing = formatLocalMatchTime(match.kickoffAt);
   const showPenaltyWinner = isKnockoutStage(match.stageKey) && draft.home !== "" && draft.home === draft.away;
+  const isLocked = !match.liveCanCreate && !match.liveCanEdit;
 
   return (
-  <article
-    className="rounded-2xl px-3 py-2"
-    style={{
-      border: "1px solid var(--color-border-accent)",
-      backgroundColor: "rgba(255, 255, 255, 0.045)",
-    }}
-  >
-    <div className="space-y-2">
-      <div className="grid grid-cols-[4rem_minmax(0,1fr)_5.5rem_minmax(0,1fr)_auto] items-center gap-2 text-xs">
-      <div style={{ color: "var(--color-text-subtle)" }}>
-        <div>{timing.date}</div>
-        <div>{timing.time}</div>
+    <article
+      className="rounded-2xl px-3 py-3"
+      style={{
+        border: "1px solid var(--color-border-accent)",
+        backgroundColor: "rgba(255, 255, 255, 0.045)",
+      }}
+    >
+      <div className="space-y-3">
+        <div className="flex items-start justify-between gap-2 text-xs">
+          <div style={{ color: "var(--color-text-subtle)" }}>
+            <div>{timing.date}</div>
+            <div>{timing.time}</div>
+          </div>
+          <div className="flex items-center gap-2">
+            {isSaved ? <StatusChip tone="saved">Guardado</StatusChip> : null}
+            {isLocked ? <StatusChip tone="locked">Bloqueado</StatusChip> : null}
+          </div>
+        </div>
+
+        <div className="space-y-2 sm:hidden">
+          <div className="flex items-center justify-between gap-3">
+            <CompactTeamRow name={match.home} align="left" />
+            <CompactScoreInput
+              label={`Marcador de ${match.home}`}
+              value={draft.home}
+              disabled={isLocked || isSaving}
+              onChange={onHomeChange}
+            />
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <CompactTeamRow name={match.away} align="left" />
+            <CompactScoreInput
+              label={`Marcador de ${match.away}`}
+              value={draft.away}
+              disabled={isLocked || isSaving}
+              onChange={onAwayChange}
+            />
+          </div>
+        </div>
+
+        <div className="hidden grid-cols-[4rem_minmax(0,1fr)_5.5rem_minmax(0,1fr)_auto] items-center gap-2 text-xs sm:grid">
+          <div style={{ color: "var(--color-text-subtle)" }}>
+            <div>{timing.date}</div>
+            <div>{timing.time}</div>
+          </div>
+
+          <CompactTeamRow name={match.home} align="right" />
+
+          <div className="flex items-center justify-center gap-1">
+            <CompactScoreInput
+              label={`Marcador de ${match.home}`}
+              value={draft.home}
+              disabled={isLocked || isSaving}
+              onChange={onHomeChange}
+            />
+            <span style={{ color: "var(--color-text-subtle)" }}>-</span>
+            <CompactScoreInput
+              label={`Marcador de ${match.away}`}
+              value={draft.away}
+              disabled={isLocked || isSaving}
+              onChange={onAwayChange}
+            />
+          </div>
+
+          <CompactTeamRow name={match.away} align="left" />
+
+          <button
+            type="button"
+            disabled={isLocked || isSaving}
+            onClick={onSave}
+            className="rounded-full px-3 py-1.5 text-[11px] font-semibold disabled:opacity-50"
+            style={{
+              border: "1px solid color-mix(in srgb, var(--color-accent) 28%, transparent)",
+              backgroundColor: isSaved
+                ? "color-mix(in srgb, var(--color-accent) 20%, rgba(255,255,255,0.08))"
+                : "rgba(255,255,255,0.06)",
+              color: "var(--color-text)",
+            }}
+          >
+            {isSaving ? "..." : isSaved ? "OK" : "Guardar"}
+          </button>
+        </div>
+
+        {showPenaltyWinner ? (
+          <CompactPenaltyWinnerPicker
+            value={draft.penaltyWinner ?? ""}
+            disabled={isLocked || isSaving}
+            homeTeam={match.home}
+            awayTeam={match.away}
+            onChange={onPenaltyWinnerChange}
+          />
+        ) : null}
+
+        <button
+          type="button"
+          disabled={isLocked || isSaving}
+          onClick={onSave}
+          className="w-full rounded-full px-3 py-2 text-xs font-semibold disabled:opacity-50 sm:hidden"
+          style={{
+            border: "1px solid color-mix(in srgb, var(--color-accent) 28%, transparent)",
+            backgroundColor: isSaved
+              ? "color-mix(in srgb, var(--color-accent) 20%, rgba(255,255,255,0.08))"
+              : "rgba(255,255,255,0.06)",
+            color: "var(--color-text)",
+          }}
+        >
+          {isSaving ? "Guardando..." : isSaved ? "Guardado" : "Guardar pronostico"}
+        </button>
       </div>
-
-      <CompactTeamRow name={match.home} align="right" />
-
-      <div className="flex items-center justify-center gap-1">
-        <CompactScoreInput
-          label={`Marcador de ${match.home}`}
-          value={draft.home}
-          disabled={(!match.liveCanCreate && !match.liveCanEdit) || isSaving}
-          onChange={onHomeChange}
-        />
-        <span style={{ color: "var(--color-text-subtle)" }}>-</span>
-        <CompactScoreInput
-          label={`Marcador de ${match.away}`}
-          value={draft.away}
-          disabled={(!match.liveCanCreate && !match.liveCanEdit) || isSaving}
-          onChange={onAwayChange}
-        />
-      </div>
-
-      <CompactTeamRow name={match.away} align="left" />
-
-      <button
-        type="button"
-        disabled={(!match.liveCanCreate && !match.liveCanEdit) || isSaving}
-        onClick={onSave}
-        className="rounded-full px-3 py-1.5 text-[11px] font-semibold disabled:opacity-50"
-        style={{
-          border: "1px solid color-mix(in srgb, var(--color-accent) 28%, transparent)",
-          backgroundColor: isSaved
-            ? "color-mix(in srgb, var(--color-accent) 20%, rgba(255,255,255,0.08))"
-            : "rgba(255,255,255,0.06)",
-          color: "var(--color-text)",
-        }}
-      >
-        {isSaving ? "..." : isSaved ? "OK" : "Guardar"}
-      </button>
-      </div>
-
-      {showPenaltyWinner ? (
-        <CompactPenaltyWinnerPicker
-          value={draft.penaltyWinner ?? ""}
-          disabled={(!match.liveCanCreate && !match.liveCanEdit) || isSaving}
-          homeTeam={match.home}
-          awayTeam={match.away}
-          onChange={onPenaltyWinnerChange}
-        />
-      ) : null}
-    </div>
-  </article>
-);
+    </article>
+  );
 }
 
 function getTeamCode(name: string) {
@@ -3000,49 +3051,61 @@ function getTeamCode(name: string) {
 }
 
 function CompactPreviewCard({ match }: { match: RoundOf32PreviewMatch }) {
-return (
-  <article
-    className="rounded-2xl p-3"
-    style={{
-      border: "1px solid var(--color-border-accent)",
-      backgroundColor: "rgba(255, 255, 255, 0.045)",
-    }}
-  >
-    <div className="space-y-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="text-xs leading-5" style={{ color: "var(--color-text-subtle)" }}>
-          <div>{match.dateLabel}</div>
-          <div>{match.timeLabel}</div>
+  return (
+    <article
+      className="rounded-2xl p-3"
+      style={{
+        border: "1px solid var(--color-border-accent)",
+        backgroundColor: "rgba(255, 255, 255, 0.045)",
+      }}
+    >
+      <div className="space-y-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="text-xs leading-5" style={{ color: "var(--color-text-subtle)" }}>
+            <div>{match.dateLabel}</div>
+            <div>{match.timeLabel}</div>
+          </div>
+
+          <span
+            className="rounded-full px-2 py-1 text-[10px] font-semibold uppercase"
+            style={{
+              border: "1px solid rgba(251, 191, 36, 0.28)",
+              backgroundColor: "rgba(245, 158, 11, 0.14)",
+              color: "rgb(254, 240, 138)",
+            }}
+          >
+            Preview
+          </span>
         </div>
 
-        <span
-          className="rounded-full px-2 py-1 text-[10px] font-semibold uppercase"
-          style={{
-            border: "1px solid rgba(251, 191, 36, 0.28)",
-            backgroundColor: "rgba(245, 158, 11, 0.14)",
-            color: "rgb(254, 240, 138)",
-          }}
-        >
-          Preview
-        </span>
+        <div className="space-y-2 sm:hidden">
+          <div className="flex items-center justify-between gap-3">
+            <PreviewSlotLabel name={match.home} align="left" />
+          </div>
+          <div className="text-center text-[10px] font-bold uppercase tracking-[0.18em]" style={{ color: "var(--color-text-subtle)" }}>
+            vs
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <PreviewSlotLabel name={match.away} align="left" />
+          </div>
+        </div>
+
+        <div className="hidden grid-cols-[1fr_auto_1fr] items-center gap-2 sm:grid">
+          <PreviewSlotLabel name={match.home} align="right" />
+
+          <span className="text-xs font-bold" style={{ color: "var(--color-text-subtle)" }}>
+            VS
+          </span>
+
+          <PreviewSlotLabel name={match.away} align="left" />
+        </div>
+
+        <p className="truncate text-xs" style={{ color: "var(--color-text-subtle)" }}>
+          {match.venue}
+        </p>
       </div>
-
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-        <PreviewSlotLabel name={match.home} align="right" />
-
-        <span className="text-xs font-bold" style={{ color: "var(--color-text-subtle)" }}>
-          VS
-        </span>
-
-        <PreviewSlotLabel name={match.away} align="left" />
-      </div>
-
-      <p className="truncate text-xs" style={{ color: "var(--color-text-subtle)" }}>
-        {match.venue}
-      </p>
-    </div>
-  </article>
-);
+    </article>
+  );
 }
 
 function PreviewProjectionCard({ match }: { match: RoundOf32PreviewMatch }) {
@@ -3057,7 +3120,7 @@ function PreviewProjectionCard({ match }: { match: RoundOf32PreviewMatch }) {
     >
       <div className="space-y-6">
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
             <span
               className="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]"
               style={{
@@ -3076,7 +3139,7 @@ function PreviewProjectionCard({ match }: { match: RoundOf32PreviewMatch }) {
             </span>
           </div>
 
-          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 sm:gap-4">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 sm:gap-4">
             <TeamPanel name={match.home} align="right" />
             <div
               className="mx-auto rounded-full px-3 py-1 text-xs font-bold"
@@ -3099,7 +3162,7 @@ function PreviewProjectionCard({ match }: { match: RoundOf32PreviewMatch }) {
             backgroundColor: "color-mix(in srgb, var(--color-secondary) 74%, transparent)",
           }}
         >
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
             <p className="text-sm font-semibold">Cruce proyectado</p>
             <StatusChip tone="preview">No editable</StatusChip>
           </div>

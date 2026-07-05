@@ -3,6 +3,7 @@ import path from "node:path";
 import { PRIMARY_LEAGUE_SLUG } from "@/lib/app-config";
 import { getDisplayCountryName } from "@/lib/country-flags";
 import { ensureLaterKnockoutMatches } from "@/lib/knockout-generation";
+import { buildLogicalMatchGroups } from "@/lib/match-deduplication";
 import { getPredictionLockState } from "@/lib/prediction-locking";
 import { getSupabaseAdmin, hasSupabaseAdminEnv } from "@/lib/supabase-admin";
 import { hasSupabaseEnv as hasSupabaseClientEnv, supabase } from "@/lib/supabase";
@@ -873,7 +874,7 @@ export async function getPredictionsPageData(): Promise<PredictionsPageData> {
         .eq("tournament_id", leagueTournament.tournament_id),
       client
         .from("matches")
-        .select("id,stage,round_number,match_number,home_team_id,away_team_id,kickoff_at,venue,status")
+        .select("id,stage,round_number,match_number,home_team_id,away_team_id,kickoff_at,venue,status,updated_at")
         .eq("tournament_id", leagueTournament.tournament_id)
         .order("kickoff_at", { ascending: true }),
       client
@@ -895,6 +896,8 @@ const teamOptions: TeamOptions[] = (teams ?? []).map((team) => ({
   tier: team.team_tier ?? "favorite",
 }));
 
+    const dedupedMatches = buildLogicalMatchGroups(matches ?? []).canonicalMatches;
+
     
     const deadlines: PhaseDeadline[] = (phaseDeadlines ?? []).map((deadline) => ({
       id: `${leagueTournament.id}-${deadline.stage}`,
@@ -904,7 +907,7 @@ const teamOptions: TeamOptions[] = (teams ?? []).map((team) => ({
       createdAt: deadline.deadline_at,
       updatedAt: deadline.deadline_at,
     }));
-    const rawMatches = (matches ?? [])
+    const rawMatches = dedupedMatches
       .filter(
         (match) =>
           match.status === "scheduled" ||
@@ -927,7 +930,7 @@ const teamOptions: TeamOptions[] = (teams ?? []).map((team) => ({
 
     const groupAssignments = deriveGroupAssignments(rawMatches);
 
-    const predictionMatches = (matches ?? [])
+    const predictionMatches = dedupedMatches
       .filter(
         (match) =>
           match.status === "scheduled" ||
