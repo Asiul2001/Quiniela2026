@@ -228,6 +228,10 @@ export async function GET(request: Request) {
         status: match.status ?? "scheduled",
         home: teamMap.get(match.home_team_id) ?? "Local",
         away: teamMap.get(match.away_team_id) ?? "Visitante",
+        homeScore: match.home_score ?? null,
+        awayScore: match.away_score ?? null,
+        homePenaltyScore: match.home_penalty_score ?? null,
+        awayPenaltyScore: match.away_penalty_score ?? null,
       })),
       predictions: (predictions ?? []).map((prediction) =>
         formatPredictionRow({
