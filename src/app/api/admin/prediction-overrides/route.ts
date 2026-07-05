@@ -418,7 +418,12 @@ export async function POST(request: Request) {
           groupPredictions: groupPredictions ?? [],
         });
 
-        bonusPoints += roundOf32Bonuses.get(body.memberId)?.totalPoints ?? 0;
+        const currentMatchBonus =
+          roundOf32Bonuses
+            .get(body.memberId)
+            ?.items.find((item) => item.matchId === match.id || item.matchNumber === match.match_number)?.points ?? 0;
+
+        bonusPoints += currentMatchBonus;
       }
 
       if (["round_of_16", "quarter_final", "semi_final"].includes(match.stage)) {
