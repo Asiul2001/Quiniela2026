@@ -755,6 +755,11 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
     });
   }, [editableMatches, hasDraftResponse, savedMatchIds, searchQuery, selectedStage, showOpenOnly, statusFilter]);
 
+  const filteredUnlockedMatches = useMemo(
+    () => filteredMatches.filter((match) => match.liveCanCreate || match.liveCanEdit).length,
+    [filteredMatches],
+  );
+
   const predictionStats = useMemo(() => {
     const total = editableMatches.length;
 
@@ -1731,8 +1736,8 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
               </div>
 
               <div className="grid gap-4 sm:grid-cols-3">
-                  <SummaryCard icon={<PencilLine className="h-4 w-4" />} label="Partidos visibles" value={String(editableMatches.length)} detail="Partidos disponibles para pronosticar" />
-                  <SummaryCard icon={<Shield className="h-4 w-4" />} label="Todavía editables" value={String(unlockedMatches)} detail="Antes del inicio" />
+                  <SummaryCard icon={<PencilLine className="h-4 w-4" />} label="Partidos visibles" value={String(filteredMatches.length)} detail="Partidos en la vista actual" />
+                  <SummaryCard icon={<Shield className="h-4 w-4" />} label="Todavía editables" value={String(filteredUnlockedMatches)} detail="Dentro de la vista actual" />
                 <SummaryCard
                   icon={<CalendarDays className="h-4 w-4" />}
                   label="Pronósticos completos"

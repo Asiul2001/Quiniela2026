@@ -76,6 +76,7 @@ async function fetchAllLeaguePredictions(admin: ReturnType<typeof getSupabaseAdm
     match_id: string;
     predicted_home_score: number | null;
     predicted_away_score: number | null;
+    updated_at?: string | null;
     prediction_scores:
       | {
           total_points?: number | null;
@@ -93,7 +94,7 @@ async function fetchAllLeaguePredictions(admin: ReturnType<typeof getSupabaseAdm
   while (true) {
     const { data, error } = await admin
       .from("predictions")
-      .select("id,member_id,match_id,predicted_home_score,predicted_away_score,prediction_scores(total_points,bonus_points)")
+      .select("id,member_id,match_id,predicted_home_score,predicted_away_score,updated_at,prediction_scores(total_points,bonus_points)")
       .eq("league_id", leagueId)
       .range(from, from + PAGE_SIZE - 1);
 
@@ -111,6 +112,15 @@ async function fetchAllLeaguePredictions(admin: ReturnType<typeof getSupabaseAdm
   }
 
   return rows;
+}
+
+function getTimestampRank(value: string | null | undefined) {
+  if (!value) {
+    return 0;
+  }
+
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
 export async function GET(request: Request) {
@@ -203,7 +213,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: errorMessage ?? "Unable to load player browser data." }, { status: 500 });
     }
 
-    const predictions = await fetchAllLeaguePredictions(admin, league.id);
+    const rawPredictions = await fetchAllLeaguePredictions(admin, league.id);
     const { canonicalMatches, canonicalIdByMatchId } = buildLogicalMatchGroups(matches ?? []);
 
     const teamMap = new Map((teams ?? []).map((team) => [team.id, team.name]));
@@ -213,6 +223,35 @@ export async function GET(request: Request) {
     const matchMap = new Map(canonicalMatches.map((match) => [match.id, match]));
     const predictionsByMember = new Map<string, Array<Record<string, unknown>>>();
     const extraPointsByMember = new Map<string, Array<Record<string, unknown>>>();
+    const canonicalPredictions = new Map<
+      string,
+      (typeof rawPredictions extends Array<infer T> ? T : never)
+    >();
+
+    for (const prediction of rawPredictions) {
+      const canonicalMatchId = canonicalIdByMatchId.get(prediction.match_id) ?? prediction.match_id;
+      const key = `${prediction.member_id}::${canonicalMatchId}`;
+      const existing = canonicalPredictions.get(key);
+
+      if (!existing) {
+        canonicalPredictions.set(key, prediction);
+        continue;
+      }
+
+      const existingUpdatedAt = getTimestampRank(existing.updated_at);
+      const candidateUpdatedAt = getTimestampRank(prediction.updated_at);
+
+      if (candidateUpdatedAt > existingUpdatedAt) {
+        canonicalPredictions.set(key, prediction);
+        continue;
+      }
+
+      if (candidateUpdatedAt === existingUpdatedAt && prediction.id.localeCompare(existing.id) > 0) {
+        canonicalPredictions.set(key, prediction);
+      }
+    }
+
+    const predictions = Array.from(canonicalPredictions.values());
 
     const darkHorseBreakdownByMember = calculateDarkHorsePointsByMember({
       teams: teams ?? [],
