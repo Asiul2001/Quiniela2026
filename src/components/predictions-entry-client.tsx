@@ -629,9 +629,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
   }, [drafts]);
 
   const filteredMatches = useMemo(() => {
-    const matchesForFiltering = selectedStage === "all" ? editableMatches : projectedMatches;
-
-    return matchesForFiltering.filter((match) => {
+    return editableMatches.filter((match) => {
       if (selectedStage !== "all" && match.stageKey !== selectedStage) {
         return false;
       }
@@ -663,7 +661,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
         match.stage.toLowerCase().includes(query)
       );
     });
-  }, [editableMatches, hasDraftResponse, projectedMatches, savedMatchIds, searchQuery, selectedStage, showOpenOnly, statusFilter]);
+  }, [editableMatches, hasDraftResponse, savedMatchIds, searchQuery, selectedStage, showOpenOnly, statusFilter]);
 
   const predictionStats = useMemo(() => {
     const total = editableMatches.length;

@@ -1,4 +1,5 @@
 import { AuthRequired } from "@/components/auth-required";
+import { AdminPredictionOverridesPanel } from "@/components/admin-prediction-overrides-panel";
 import { PlayerAccessCodesPanel } from "@/components/player-access-codes-panel";
 
 export default function AdminPage() {
@@ -10,6 +11,7 @@ export default function AdminPage() {
       >
         
         <div className="mx-auto flex max-w-5xl flex-col gap-6">
+          <AdminPredictionOverridesPanel />
           <PlayerAccessCodesPanel />
         </div>
       </main>
