@@ -6,6 +6,42 @@ import { calculateRoundOf32ProjectionBonusesByMember } from "@/lib/server-bonus-
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import type { Stage } from "@/lib/types";
 
+type AdminMatchRow = {
+  id: string;
+  stage: Stage;
+  match_number: number | null;
+  kickoff_at: string | null;
+  venue: string | null;
+  status: string | null;
+  updated_at: string | null;
+  home_team_id: string;
+  away_team_id: string;
+  home_score: number | null;
+  away_score: number | null;
+  home_penalty_score: number | null;
+  away_penalty_score: number | null;
+};
+
+type AdminPredictionRow = {
+  id?: string;
+  member_id: string;
+  match_id: string;
+  predicted_home_score: number | null;
+  predicted_away_score: number | null;
+  predicted_penalty_winner: string | null;
+  updated_at?: string | null;
+  prediction_scores?:
+    | {
+        total_points?: number | null;
+        bonus_points?: number | null;
+      }
+    | Array<{
+        total_points?: number | null;
+        bonus_points?: number | null;
+      }>
+    | null;
+};
+
 function readBearerToken(request: Request) {
   const authorization = request.headers.get("authorization");
   if (!authorization?.startsWith("Bearer ")) {
@@ -50,24 +86,14 @@ async function requirePlatformAdmin(request: Request) {
   return { admin, userId: data.user.id };
 }
 
-function formatPredictionRow(prediction: {
-  id?: string;
-  member_id: string;
-  match_id: string;
-  predicted_home_score: number | null;
-  predicted_away_score: number | null;
-  predicted_penalty_winner: string | null;
-  prediction_scores?:
-    | {
-        total_points?: number | null;
-        bonus_points?: number | null;
-      }
-    | Array<{
-        total_points?: number | null;
-        bonus_points?: number | null;
-      }>
-    | null;
-}) {
+function formatPredictionRow(
+  prediction: AdminPredictionRow,
+  overrides?: {
+    matchId?: string;
+    totalPoints?: number | null;
+    bonusPoints?: number | null;
+  },
+) {
   const scoreRow = Array.isArray(prediction.prediction_scores)
     ? prediction.prediction_scores[0]
     : prediction.prediction_scores;
@@ -75,15 +101,127 @@ function formatPredictionRow(prediction: {
   return {
     id: prediction.id ?? null,
     memberId: prediction.member_id,
-    matchId: prediction.match_id,
+    matchId: overrides?.matchId ?? prediction.match_id,
     predictedHomeScore: prediction.predicted_home_score,
     predictedAwayScore: prediction.predicted_away_score,
     predictedPenaltyWinner:
       prediction.predicted_penalty_winner === "home" || prediction.predicted_penalty_winner === "away"
         ? prediction.predicted_penalty_winner
         : null,
-    totalPoints: scoreRow?.total_points ?? null,
-    bonusPoints: scoreRow?.bonus_points ?? null,
+    totalPoints:
+      overrides && "totalPoints" in overrides ? (overrides.totalPoints ?? null) : (scoreRow?.total_points ?? null),
+    bonusPoints:
+      overrides && "bonusPoints" in overrides ? (overrides.bonusPoints ?? null) : (scoreRow?.bonus_points ?? null),
+  };
+}
+
+function getTimestampRank(value: string | null | undefined) {
+  if (!value) {
+    return 0;
+  }
+
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function chooseCanonicalPrediction(
+  current: AdminPredictionRow,
+  candidate: AdminPredictionRow,
+  canonicalMatchId: string,
+) {
+  const currentCanonicalRank = current.match_id === canonicalMatchId ? 1 : 0;
+  const candidateCanonicalRank = candidate.match_id === canonicalMatchId ? 1 : 0;
+
+  if (candidateCanonicalRank !== currentCanonicalRank) {
+    return candidateCanonicalRank > currentCanonicalRank ? candidate : current;
+  }
+
+  const currentUpdatedRank = getTimestampRank(current.updated_at);
+  const candidateUpdatedRank = getTimestampRank(candidate.updated_at);
+  if (candidateUpdatedRank !== currentUpdatedRank) {
+    return candidateUpdatedRank > currentUpdatedRank ? candidate : current;
+  }
+
+  return (candidate.id ?? "").localeCompare(current.id ?? "") > 0 ? candidate : current;
+}
+
+function calculateLivePredictionScore(params: {
+  prediction: AdminPredictionRow;
+  match: AdminMatchRow | undefined;
+  roundOf32BonusesByMember: Map<
+    string,
+    {
+      totalPoints: number;
+      items: Array<{
+        matchId: string;
+        matchNumber: number;
+        points: number;
+      }>;
+    }
+  >;
+}) {
+  const { prediction, match, roundOf32BonusesByMember } = params;
+
+  if (
+    !match ||
+    prediction.predicted_home_score == null ||
+    prediction.predicted_away_score == null ||
+    match.home_score == null ||
+    match.away_score == null
+  ) {
+    return {
+      totalPoints: null,
+      bonusPoints: null,
+    };
+  }
+
+  const breakdown = calculateMatchPoints({
+    stage: match.stage,
+    predicted: {
+      home: prediction.predicted_home_score,
+      away: prediction.predicted_away_score,
+    },
+    actual: {
+      home: match.home_score,
+      away: match.away_score,
+    },
+  });
+
+  let bonusPoints = 0;
+
+  if (match.stage === "round_of_32") {
+    bonusPoints =
+      roundOf32BonusesByMember
+        .get(prediction.member_id)
+        ?.items.find((item) => item.matchId === match.id || item.matchNumber === match.match_number)
+        ?.points ?? 0;
+  } else if (["round_of_16", "quarter_final", "semi_final"].includes(match.stage)) {
+    const actualAdvancingSide = getActualAdvancingSide({
+      stage: match.stage,
+      homeScore: match.home_score,
+      awayScore: match.away_score,
+      homePenaltyScore: match.home_penalty_score,
+      awayPenaltyScore: match.away_penalty_score,
+    });
+
+    const predictedAdvancingSide = getPredictedAdvancingSide({
+      stage: match.stage,
+      homeScore: prediction.predicted_home_score,
+      awayScore: prediction.predicted_away_score,
+      predictedPenaltyWinner:
+        prediction.predicted_penalty_winner === "home" || prediction.predicted_penalty_winner === "away"
+          ? prediction.predicted_penalty_winner
+          : null,
+    });
+
+    if (actualAdvancingSide && predictedAdvancingSide === actualAdvancingSide) {
+      bonusPoints = 1;
+    }
+  }
+
+  return {
+    totalPoints: breakdown.points + bonusPoints,
+    bonusPoints,
   };
 }
 
@@ -186,7 +324,7 @@ export async function GET(request: Request) {
       auth.admin.from("teams").select("id,name").eq("tournament_id", leagueTournament.tournament_id),
       auth.admin
         .from("predictions")
-        .select("id,member_id,match_id,predicted_home_score,predicted_away_score,predicted_penalty_winner,prediction_scores(total_points,bonus_points)")
+        .select("id,member_id,match_id,predicted_home_score,predicted_away_score,predicted_penalty_winner,updated_at,prediction_scores(total_points,bonus_points)")
         .eq("league_id", league.id),
     ]);
 
@@ -206,6 +344,29 @@ export async function GET(request: Request) {
 
     const teamMap = new Map((teams ?? []).map((team) => [team.id, team.name]));
     const { canonicalMatches, canonicalIdByMatchId } = buildLogicalMatchGroups(matches ?? []);
+    const canonicalMatchMap = new Map(canonicalMatches.map((match) => [match.id, match]));
+
+    const groupMatches = (matches ?? []).filter((match) => match.stage === "group");
+    const roundOf32Matches = (matches ?? []).filter((match) => match.stage === "round_of_32");
+    const groupMatchIds = new Set(groupMatches.map((match) => match.id));
+    const roundOf32BonusesByMember = calculateRoundOf32ProjectionBonusesByMember({
+      groupMatches,
+      roundOf32Matches,
+      groupPredictions: (predictions ?? []).filter((prediction) => groupMatchIds.has(prediction.match_id)),
+    });
+
+    const canonicalPredictionsByKey = new Map<string, AdminPredictionRow>();
+    for (const prediction of predictions ?? []) {
+      const canonicalMatchId = canonicalIdByMatchId.get(prediction.match_id) ?? prediction.match_id;
+      const key = `${prediction.member_id}::${canonicalMatchId}`;
+      const existing = canonicalPredictionsByKey.get(key);
+      if (!existing) {
+        canonicalPredictionsByKey.set(key, prediction);
+        continue;
+      }
+
+      canonicalPredictionsByKey.set(key, chooseCanonicalPrediction(existing, prediction, canonicalMatchId));
+    }
 
     return NextResponse.json({
       league: {
@@ -233,12 +394,20 @@ export async function GET(request: Request) {
         homePenaltyScore: match.home_penalty_score ?? null,
         awayPenaltyScore: match.away_penalty_score ?? null,
       })),
-      predictions: (predictions ?? []).map((prediction) =>
-        formatPredictionRow({
-          ...prediction,
-          match_id: canonicalIdByMatchId.get(prediction.match_id) ?? prediction.match_id,
-        }),
-      ),
+      predictions: Array.from(canonicalPredictionsByKey.entries()).map(([key, prediction]) => {
+        const canonicalMatchId = key.split("::")[1] ?? prediction.match_id;
+        const liveScore = calculateLivePredictionScore({
+          prediction,
+          match: canonicalMatchMap.get(canonicalMatchId),
+          roundOf32BonusesByMember,
+        });
+
+        return formatPredictionRow(prediction, {
+          matchId: canonicalMatchId,
+          totalPoints: liveScore.totalPoints,
+          bonusPoints: liveScore.bonusPoints,
+        });
+      }),
     });
   } catch (error) {
     return NextResponse.json(
@@ -484,12 +653,20 @@ export async function POST(request: Request) {
       }
 
       return NextResponse.json({
-        prediction: formatPredictionRow(refreshedPrediction),
+        prediction: formatPredictionRow(refreshedPrediction, {
+          matchId: body.matchId,
+          totalPoints: breakdown.points + bonusPoints,
+          bonusPoints,
+        }),
       });
     }
 
     return NextResponse.json({
-      prediction: formatPredictionRow(prediction),
+      prediction: formatPredictionRow(prediction, {
+        matchId: body.matchId,
+        totalPoints: null,
+        bonusPoints: null,
+      }),
     });
   } catch (error) {
     return NextResponse.json(
