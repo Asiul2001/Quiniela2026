@@ -214,6 +214,16 @@ function getPredictedWinnerFromDraft(
   return null;
 }
 
+function getPredictionMatchLogicalKey(
+  match: Pick<PredictionsPageData["matches"][number], "id" | "stageKey" | "matchNumber">,
+) {
+  if (match.matchNumber !== null) {
+    return `${match.stageKey}:${match.matchNumber}`;
+  }
+
+  return `id:${match.id}`;
+}
+
 function formatKnockoutPreviewTitle(stage: Stage) {
   switch (stage) {
     case "round_of_16":
@@ -339,6 +349,43 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
   const [syncingRoundOf32, setSyncingRoundOf32] = useState(false);
   const toastIdRef = useRef(0);
 
+  const dedupedDataMatches = useMemo(() => {
+    const matchMap = new Map<string, PredictionsPageData["matches"][number]>();
+
+    for (const match of data.matches) {
+      const key = getPredictionMatchLogicalKey(match);
+      const existing = matchMap.get(key);
+
+      if (!existing) {
+        matchMap.set(key, match);
+        continue;
+      }
+
+      const existingRank =
+        (existing.lockState === "match-locked" ? 2 : existing.lockState === "phase-creation-locked" ? 1 : 0) +
+        (existing.canEdit || existing.canCreate ? 1 : 0);
+      const candidateRank =
+        (match.lockState === "match-locked" ? 2 : match.lockState === "phase-creation-locked" ? 1 : 0) +
+        (match.canEdit || match.canCreate ? 1 : 0);
+
+      const existingKickoff = new Date(existing.kickoffAt).getTime();
+      const candidateKickoff = new Date(match.kickoffAt).getTime();
+
+      if (
+        candidateRank > existingRank ||
+        (candidateRank === existingRank && candidateKickoff > existingKickoff)
+      ) {
+        matchMap.set(key, match);
+      }
+    }
+
+    return Array.from(matchMap.values()).sort(
+      (left, right) =>
+        new Date(left.kickoffAt).getTime() - new Date(right.kickoffAt).getTime() ||
+        (left.matchNumber ?? Number.MAX_SAFE_INTEGER) - (right.matchNumber ?? Number.MAX_SAFE_INTEGER),
+    );
+  }, [data.matches]);
+
   useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 30000);
     return () => window.clearInterval(interval);
@@ -356,7 +403,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
     async function loadUserPredictions() {
       const localPredictions = getLocalPredictions(data.leagueId, userName);
       const migratedLocalPredictions = { ...localPredictions };
-      const officialRoundOf32Matches = data.matches.filter((match) => {
+      const officialRoundOf32Matches = dedupedDataMatches.filter((match) => {
         if (match.matchNumber === null) {
           return false;
         }
@@ -502,7 +549,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
     return () => {
       active = false;
     };
-  }, [currentUser, currentUserName, data.initialPredictions, data.leagueId, defaultPredictionIds]);
+  }, [currentUser, currentUserName, data.initialPredictions, data.leagueId, defaultPredictionIds, dedupedDataMatches]);
 
   function showToast(message: string, type: Toast["type"]) {
     toastIdRef.current += 1;
@@ -515,7 +562,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
 
   const enrichedMatches = useMemo<EnrichedMatch[]>(
     () =>
-      data.matches.map((match) => {
+      dedupedDataMatches.map((match) => {
         const predictionExists = Boolean(existingPredictionIds[match.id]);
         const phaseDeadline = match.phaseDeadlineAt
           ? ({
@@ -554,7 +601,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
           liveLockReason: lockWindow.reason,
         };
       }),
-    [data.leagueId, data.matches, existingPredictionIds, now],
+    [data.leagueId, dedupedDataMatches, existingPredictionIds, now],
   );
 
   const projectedMatches = useMemo<EnrichedMatch[]>(() => {
@@ -1154,16 +1201,16 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
   const officialKnockoutMatchesByNumber = useMemo(
     () =>
       new Map(
-        data.matches
+        dedupedDataMatches
           .filter((match) => isKnockoutStage(match.stageKey) && match.matchNumber !== null)
           .map((match) => [match.matchNumber as number, match] as const),
       ),
-    [data.matches],
+    [dedupedDataMatches],
   );
 
   const officialRoundOf16Matches = useMemo(
-    () => data.matches.filter((match) => match.stageKey === "round_of_16"),
-    [data.matches],
+    () => dedupedDataMatches.filter((match) => match.stageKey === "round_of_16"),
+    [dedupedDataMatches],
   );
 
   const predictedRoundOf16Winners = useMemo(() => {

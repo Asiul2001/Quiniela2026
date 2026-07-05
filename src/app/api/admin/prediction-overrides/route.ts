@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { PRIMARY_LEAGUE_SLUG, PRIMARY_OWNER_NAME, PRIMARY_OWNER_UID } from "@/lib/app-config";
+import { buildLogicalMatchGroups } from "@/lib/match-deduplication";
+import { calculateMatchPoints } from "@/lib/scoring";
+import { calculateRoundOf32ProjectionBonusesByMember } from "@/lib/server-bonus-scoring";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
+import type { Stage } from "@/lib/types";
 
 function readBearerToken(request: Request) {
   const authorization = request.headers.get("authorization");
@@ -47,13 +51,29 @@ async function requirePlatformAdmin(request: Request) {
 }
 
 function formatPredictionRow(prediction: {
+  id?: string;
   member_id: string;
   match_id: string;
   predicted_home_score: number | null;
   predicted_away_score: number | null;
   predicted_penalty_winner: string | null;
+  prediction_scores?:
+    | {
+        total_points?: number | null;
+        bonus_points?: number | null;
+      }
+    | Array<{
+        total_points?: number | null;
+        bonus_points?: number | null;
+      }>
+    | null;
 }) {
+  const scoreRow = Array.isArray(prediction.prediction_scores)
+    ? prediction.prediction_scores[0]
+    : prediction.prediction_scores;
+
   return {
+    id: prediction.id ?? null,
     memberId: prediction.member_id,
     matchId: prediction.match_id,
     predictedHomeScore: prediction.predicted_home_score,
@@ -62,7 +82,57 @@ function formatPredictionRow(prediction: {
       prediction.predicted_penalty_winner === "home" || prediction.predicted_penalty_winner === "away"
         ? prediction.predicted_penalty_winner
         : null,
+    totalPoints: scoreRow?.total_points ?? null,
+    bonusPoints: scoreRow?.bonus_points ?? null,
   };
+}
+
+function getActualAdvancingSide(params: {
+  stage: Stage;
+  homeScore: number;
+  awayScore: number;
+  homePenaltyScore: number | null;
+  awayPenaltyScore: number | null;
+}) {
+  if (params.homeScore > params.awayScore) {
+    return "home" as const;
+  }
+
+  if (params.awayScore > params.homeScore) {
+    return "away" as const;
+  }
+
+  if (params.stage === "group") {
+    return null;
+  }
+
+  if (params.homePenaltyScore != null && params.awayPenaltyScore != null) {
+    if (params.homePenaltyScore > params.awayPenaltyScore) return "home" as const;
+    if (params.awayPenaltyScore > params.homePenaltyScore) return "away" as const;
+  }
+
+  return null;
+}
+
+function getPredictedAdvancingSide(params: {
+  stage: Stage;
+  homeScore: number;
+  awayScore: number;
+  predictedPenaltyWinner: "home" | "away" | null;
+}) {
+  if (params.homeScore > params.awayScore) {
+    return "home" as const;
+  }
+
+  if (params.awayScore > params.homeScore) {
+    return "away" as const;
+  }
+
+  if (params.stage === "group") {
+    return null;
+  }
+
+  return params.predictedPenaltyWinner;
 }
 
 export async function GET(request: Request) {
@@ -110,13 +180,13 @@ export async function GET(request: Request) {
       auth.admin.from("profiles").select("id,display_name,full_name"),
       auth.admin
         .from("matches")
-        .select("id,stage,match_number,kickoff_at,venue,home_team_id,away_team_id,status")
+        .select("id,stage,match_number,kickoff_at,venue,home_team_id,away_team_id,status,updated_at,home_score,away_score,home_penalty_score,away_penalty_score")
         .eq("tournament_id", leagueTournament.tournament_id)
         .order("kickoff_at", { ascending: true }),
       auth.admin.from("teams").select("id,name").eq("tournament_id", leagueTournament.tournament_id),
       auth.admin
         .from("predictions")
-        .select("member_id,match_id,predicted_home_score,predicted_away_score,predicted_penalty_winner")
+        .select("id,member_id,match_id,predicted_home_score,predicted_away_score,predicted_penalty_winner,prediction_scores(total_points,bonus_points)")
         .eq("league_id", league.id),
     ]);
 
@@ -135,6 +205,7 @@ export async function GET(request: Request) {
     );
 
     const teamMap = new Map((teams ?? []).map((team) => [team.id, team.name]));
+    const { canonicalMatches, canonicalIdByMatchId } = buildLogicalMatchGroups(matches ?? []);
 
     return NextResponse.json({
       league: {
@@ -148,7 +219,7 @@ export async function GET(request: Request) {
           name: profileMap.get(member.user_id) ?? "Jugador",
         }))
         .sort((left, right) => left.name.localeCompare(right.name)),
-      matches: (matches ?? []).map((match) => ({
+      matches: canonicalMatches.map((match) => ({
         id: match.id,
         stage: match.stage,
         matchNumber: match.match_number,
@@ -158,7 +229,12 @@ export async function GET(request: Request) {
         home: teamMap.get(match.home_team_id) ?? "Local",
         away: teamMap.get(match.away_team_id) ?? "Visitante",
       })),
-      predictions: (predictions ?? []).map(formatPredictionRow),
+      predictions: (predictions ?? []).map((prediction) =>
+        formatPredictionRow({
+          ...prediction,
+          match_id: canonicalIdByMatchId.get(prediction.match_id) ?? prediction.match_id,
+        }),
+      ),
     });
   } catch (error) {
     return NextResponse.json(
@@ -194,6 +270,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing or invalid manual prediction payload." }, { status: 400 });
     }
 
+    const predictedHomeScore = Number(body.predictedHomeScore);
+    const predictedAwayScore = Number(body.predictedAwayScore);
+
     const { data: league, error: leagueError } = await auth.admin
       .from("leagues")
       .select("id")
@@ -216,7 +295,7 @@ export async function POST(request: Request) {
         .maybeSingle(),
       auth.admin
         .from("matches")
-        .select("id,stage")
+        .select("id,tournament_id,stage,match_number,home_team_id,away_team_id,home_score,away_score,home_penalty_score,away_penalty_score,status")
         .eq("id", body.matchId)
         .maybeSingle(),
     ]);
@@ -236,7 +315,7 @@ export async function POST(request: Request) {
     }
 
     const predictedPenaltyWinner =
-      body.predictedHomeScore === body.predictedAwayScore &&
+      predictedHomeScore === predictedAwayScore &&
       (body.predictedPenaltyWinner === "home" || body.predictedPenaltyWinner === "away")
         ? body.predictedPenaltyWinner
         : null;
@@ -248,8 +327,8 @@ export async function POST(request: Request) {
           league_id: league.id,
           member_id: body.memberId,
           match_id: body.matchId,
-          predicted_home_score: body.predictedHomeScore,
-          predicted_away_score: body.predictedAwayScore,
+          predicted_home_score: predictedHomeScore,
+          predicted_away_score: predictedAwayScore,
           predicted_penalty_winner: predictedPenaltyWinner,
           updated_at: new Date().toISOString(),
         },
@@ -257,7 +336,7 @@ export async function POST(request: Request) {
           onConflict: "member_id,match_id",
         },
       )
-      .select("member_id,match_id,predicted_home_score,predicted_away_score,predicted_penalty_winner")
+      .select("id,member_id,match_id,predicted_home_score,predicted_away_score,predicted_penalty_winner,prediction_scores(total_points,bonus_points)")
       .single();
 
     if (upsertError || !prediction) {
@@ -265,6 +344,139 @@ export async function POST(request: Request) {
         { error: upsertError?.message ?? "Unable to save manual prediction." },
         { status: 500 },
       );
+    }
+
+    if (match.home_score != null && match.away_score != null && prediction.id) {
+      const breakdown = calculateMatchPoints({
+        stage: match.stage as Stage,
+        predicted: {
+          home: predictedHomeScore,
+          away: predictedAwayScore,
+        },
+        actual: {
+          home: match.home_score,
+          away: match.away_score,
+        },
+      });
+
+      let bonusPoints = 0;
+
+      if ((match.stage as Stage) === "round_of_32") {
+        const [{ data: groupMatches, error: groupMatchesError }, { data: roundOf32Matches, error: roundOf32MatchesError }] =
+          await Promise.all([
+            auth.admin
+              .from("matches")
+              .select("id,match_number,home_team_id,away_team_id")
+              .eq("tournament_id", match.tournament_id)
+              .eq("stage", "group")
+              .order("match_number", { ascending: true }),
+            auth.admin
+              .from("matches")
+              .select("id,match_number,home_team_id,away_team_id")
+              .eq("tournament_id", match.tournament_id)
+              .eq("stage", "round_of_32"),
+          ]);
+
+        if (groupMatchesError || roundOf32MatchesError) {
+          return NextResponse.json(
+            {
+              error:
+                groupMatchesError?.message ??
+                roundOf32MatchesError?.message ??
+                "Unable to score round of 32 classification bonus.",
+            },
+            { status: 500 },
+          );
+        }
+
+        const groupMatchIds = (groupMatches ?? []).map((groupMatch) => groupMatch.id);
+        const { data: groupPredictions, error: groupPredictionsError } = groupMatchIds.length
+          ? await auth.admin
+              .from("predictions")
+              .select("member_id,match_id,predicted_home_score,predicted_away_score")
+              .eq("league_id", league.id)
+              .eq("member_id", body.memberId)
+              .in("match_id", groupMatchIds)
+          : { data: [], error: null };
+
+        if (groupPredictionsError) {
+          return NextResponse.json(
+            {
+              error: groupPredictionsError.message,
+            },
+            { status: 500 },
+          );
+        }
+
+        const roundOf32Bonuses = calculateRoundOf32ProjectionBonusesByMember({
+          groupMatches: groupMatches ?? [],
+          roundOf32Matches: roundOf32Matches ?? [],
+          groupPredictions: groupPredictions ?? [],
+        });
+
+        bonusPoints += roundOf32Bonuses.get(body.memberId)?.totalPoints ?? 0;
+      }
+
+      if (["round_of_16", "quarter_final", "semi_final"].includes(match.stage)) {
+        const actualAdvancingSide = getActualAdvancingSide({
+          stage: match.stage as Stage,
+          homeScore: match.home_score,
+          awayScore: match.away_score,
+          homePenaltyScore: match.home_penalty_score,
+          awayPenaltyScore: match.away_penalty_score,
+        });
+
+        const predictedAdvancingSide = getPredictedAdvancingSide({
+          stage: match.stage as Stage,
+          homeScore: predictedHomeScore,
+          awayScore: predictedAwayScore,
+          predictedPenaltyWinner,
+        });
+
+        if (actualAdvancingSide && predictedAdvancingSide === actualAdvancingSide) {
+          bonusPoints += 1;
+        }
+      }
+
+      const { error: scoreUpsertError } = await auth.admin
+        .from("prediction_scores")
+        .upsert(
+          {
+            prediction_id: prediction.id,
+            outcome_points: breakdown.outcomePointsAwarded,
+            goal_difference_points: breakdown.goalDifferencePointsAwarded,
+            exact_score_points: breakdown.exactScorePointsAwarded,
+            bonus_points: bonusPoints,
+            total_points: breakdown.points + bonusPoints,
+          },
+          {
+            onConflict: "prediction_id",
+          },
+        );
+
+      if (scoreUpsertError) {
+        return NextResponse.json(
+          { error: scoreUpsertError.message },
+          { status: 500 },
+        );
+      }
+
+      const { data: refreshedPrediction, error: refreshedPredictionError } = await auth.admin
+        .from("predictions")
+        .select("id,member_id,match_id,predicted_home_score,predicted_away_score,predicted_penalty_winner,prediction_scores(total_points,bonus_points)")
+        .eq("id", prediction.id)
+        .single();
+
+      if (refreshedPredictionError || !refreshedPrediction) {
+        return NextResponse.json(
+          { error: refreshedPredictionError?.message ?? "Unable to reload saved prediction." },
+          { status: 500 },
+        );
+      }
+
+      return NextResponse.json({
+        prediction: formatPredictionRow(refreshedPrediction),
+      });
     }
 
     return NextResponse.json({

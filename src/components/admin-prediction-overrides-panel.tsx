@@ -32,11 +32,14 @@ type AdminMatch = {
 };
 
 type AdminPrediction = {
+  id: string | null;
   memberId: string;
   matchId: string;
   predictedHomeScore: number | null;
   predictedAwayScore: number | null;
   predictedPenaltyWinner: "home" | "away" | null;
+  totalPoints: number | null;
+  bonusPoints: number | null;
 };
 
 type Draft = {
@@ -441,6 +444,15 @@ export function AdminPredictionOverridesPanel() {
               const requiresPenalties = match.stage !== "group" && draft.home !== "" && draft.home === draft.away;
               const homeFlag = getCountryFlagUrl(match.home);
               const awayFlag = getCountryFlagUrl(match.away);
+              const existingPredictionLabel = existingPrediction
+                ? `${existingPrediction.predictedHomeScore ?? "-"}-${existingPrediction.predictedAwayScore ?? "-"}${
+                    existingPrediction.predictedPenaltyWinner === "home"
+                      ? ` · penales ${match.home}`
+                      : existingPrediction.predictedPenaltyWinner === "away"
+                        ? ` · penales ${match.away}`
+                        : ""
+                  }`
+                : null;
 
               return (
                 <article
@@ -497,6 +509,28 @@ export function AdminPredictionOverridesPanel() {
                       ) : null}
                     </div>
                   </div>
+
+                  {existingPrediction ? (
+                    <div
+                      className="mt-4 rounded-2xl px-4 py-3 text-sm"
+                      style={{
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        backgroundColor: "rgba(255,255,255,0.03)",
+                        color: "var(--color-text-subtle)",
+                      }}
+                    >
+                      <p className="font-semibold text-white">Pronóstico guardado actualmente</p>
+                      <p className="mt-1">
+                        {existingPredictionLabel}
+                        {existingPrediction.totalPoints !== null
+                          ? ` · ${existingPrediction.totalPoints} pts`
+                          : ""}
+                        {existingPrediction.bonusPoints
+                          ? ` · bonus ${existingPrediction.bonusPoints}`
+                          : ""}
+                      </p>
+                    </div>
+                  ) : null}
 
                   <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-end">
                     <label className="grid gap-2">
