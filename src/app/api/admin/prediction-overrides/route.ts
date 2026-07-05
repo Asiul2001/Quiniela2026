@@ -129,17 +129,17 @@ function chooseCanonicalPrediction(
   candidate: AdminPredictionRow,
   canonicalMatchId: string,
 ) {
+  const currentUpdatedRank = getTimestampRank(current.updated_at);
+  const candidateUpdatedRank = getTimestampRank(candidate.updated_at);
+  if (candidateUpdatedRank !== currentUpdatedRank) {
+    return candidateUpdatedRank > currentUpdatedRank ? candidate : current;
+  }
+
   const currentCanonicalRank = current.match_id === canonicalMatchId ? 1 : 0;
   const candidateCanonicalRank = candidate.match_id === canonicalMatchId ? 1 : 0;
 
   if (candidateCanonicalRank !== currentCanonicalRank) {
     return candidateCanonicalRank > currentCanonicalRank ? candidate : current;
-  }
-
-  const currentUpdatedRank = getTimestampRank(current.updated_at);
-  const candidateUpdatedRank = getTimestampRank(candidate.updated_at);
-  if (candidateUpdatedRank !== currentUpdatedRank) {
-    return candidateUpdatedRank > currentUpdatedRank ? candidate : current;
   }
 
   return (candidate.id ?? "").localeCompare(current.id ?? "") > 0 ? candidate : current;

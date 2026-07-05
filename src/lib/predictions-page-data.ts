@@ -48,6 +48,7 @@ export type PredictionsPageData = {
   tournamentName: string;
   matches: PredictionEntryMatch[];
   initialPredictions: Record<string, { home: string; away: string }>;
+  canonicalMatchIdByMatchId: Record<string, string>;
 
   teams: TeamOptions[];
   tournamentId: string;
@@ -60,6 +61,7 @@ const fallbackBaseData: PredictionsPageData = {
   tournamentName: "FIFA World Cup 2026",
   matches: [],
   initialPredictions: {},
+  canonicalMatchIdByMatchId: {},
   teams: [],
   tournamentId: "11111111-1111-1111-1111-111111111111", 
 };
@@ -803,10 +805,10 @@ async function getFallbackData(): Promise<PredictionsPageData> {
   }
 
   const matches = await seedFallbackMatchesPromise;
-  return {
-    ...fallbackBaseData,
-    matches: mergeFallbackRoundOf32Fixtures(matches),
-  };
+    return {
+      ...fallbackBaseData,
+      matches: mergeFallbackRoundOf32Fixtures(matches),
+    };
 }
 
 export async function getPredictionsPageData(): Promise<PredictionsPageData> {
@@ -896,7 +898,7 @@ const teamOptions: TeamOptions[] = (teams ?? []).map((team) => ({
   tier: team.team_tier ?? "favorite",
 }));
 
-    const dedupedMatches = buildLogicalMatchGroups(matches ?? []).canonicalMatches;
+    const { canonicalMatches: dedupedMatches, canonicalIdByMatchId } = buildLogicalMatchGroups(matches ?? []);
 
     
     const deadlines: PhaseDeadline[] = (phaseDeadlines ?? []).map((deadline) => ({
@@ -973,6 +975,7 @@ const teamOptions: TeamOptions[] = (teams ?? []).map((team) => ({
         ? mergeSupplementalRoundOf16(mergeFallbackRoundOf32Fixtures(predictionMatches))
         : (await getFallbackData()).matches,
       initialPredictions: {},
+      canonicalMatchIdByMatchId: Object.fromEntries(canonicalIdByMatchId.entries()),
       bonusPredictions: (bonusPredictions ?? []).map((prediction) => ({
         memberId: prediction.member_id,
         type: prediction.type,

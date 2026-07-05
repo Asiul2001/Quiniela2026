@@ -224,6 +224,13 @@ function getPredictionMatchLogicalKey(
   return `id:${match.id}`;
 }
 
+function getCanonicalPredictionMatchId(
+  matchId: string,
+  canonicalMatchIdByMatchId: PredictionsPageData["canonicalMatchIdByMatchId"],
+) {
+  return canonicalMatchIdByMatchId[matchId] ?? matchId;
+}
+
 function formatKnockoutPreviewTitle(stage: Stage) {
   switch (stage) {
     case "round_of_16":
@@ -402,9 +409,14 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
 
     async function loadUserPredictions() {
       const localPredictions = getLocalPredictions(data.leagueId, userName);
-      const migratedLocalPredictions = { ...localPredictions };
+      const migratedLocalPredictions = Object.fromEntries(
+        Object.entries(localPredictions).map(([matchId, prediction]) => [
+          getCanonicalPredictionMatchId(matchId, data.canonicalMatchIdByMatchId),
+          prediction,
+        ]),
+      );
       const officialRoundOf32Matches = dedupedDataMatches.filter((match) => {
-        if (match.matchNumber === null) {
+        if (match.stageKey !== "round_of_32" || match.matchNumber === null) {
           return false;
         }
 
@@ -469,7 +481,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
         const membership = await ensureLeagueMembershipForUser(user, userName);
         const { data: remotePredictions, error } = await supabase
           .from("predictions")
-          .select("match_id,predicted_home_score,predicted_away_score,predicted_penalty_winner")
+          .select("match_id,predicted_home_score,predicted_away_score,predicted_penalty_winner,updated_at")
           .eq("league_id", data.leagueId)
           .eq("member_id", membership.memberId);
 
@@ -479,9 +491,34 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
 
         if (!active) return;
 
-        const remoteDrafts = Object.fromEntries(
-          (remotePredictions ?? []).map((prediction) => [
+        const latestRemotePredictionsByMatchId = new Map<
+          string,
+          (typeof remotePredictions extends Array<infer T> ? T : never)
+        >();
+
+        for (const prediction of remotePredictions ?? []) {
+          const canonicalMatchId = getCanonicalPredictionMatchId(
             prediction.match_id,
+            data.canonicalMatchIdByMatchId,
+          );
+          const existing = latestRemotePredictionsByMatchId.get(canonicalMatchId);
+
+          if (!existing) {
+            latestRemotePredictionsByMatchId.set(canonicalMatchId, prediction);
+            continue;
+          }
+
+          const existingUpdatedAt = existing.updated_at ? new Date(existing.updated_at).getTime() : 0;
+          const candidateUpdatedAt = prediction.updated_at ? new Date(prediction.updated_at).getTime() : 0;
+
+          if (candidateUpdatedAt >= existingUpdatedAt) {
+            latestRemotePredictionsByMatchId.set(canonicalMatchId, prediction);
+          }
+        }
+
+        const remoteDrafts = Object.fromEntries(
+          Array.from(latestRemotePredictionsByMatchId.entries()).map(([canonicalMatchId, prediction]) => [
+            canonicalMatchId,
             {
               home:
                 prediction.predicted_home_score !== null && prediction.predicted_home_score !== undefined
@@ -493,13 +530,13 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                   : "",
               penaltyWinner:
                 prediction.predicted_penalty_winner ??
-                localDrafts[prediction.match_id]?.penaltyWinner ??
+                localDrafts[canonicalMatchId]?.penaltyWinner ??
                 "",
             },
           ]),
         );
         const remoteSavedIds = Object.fromEntries(
-          (remotePredictions ?? []).map((prediction) => [prediction.match_id, true]),
+          Array.from(latestRemotePredictionsByMatchId.keys()).map((matchId) => [matchId, true]),
         );
 
         setMemberId(membership.memberId);
@@ -549,7 +586,15 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
     return () => {
       active = false;
     };
-  }, [currentUser, currentUserName, data.initialPredictions, data.leagueId, defaultPredictionIds, dedupedDataMatches]);
+  }, [
+    currentUser,
+    currentUserName,
+    data.canonicalMatchIdByMatchId,
+    data.initialPredictions,
+    data.leagueId,
+    defaultPredictionIds,
+    dedupedDataMatches,
+  ]);
 
   function showToast(message: string, type: Toast["type"]) {
     toastIdRef.current += 1;
@@ -1100,15 +1145,15 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
   const officialRoundOf32Matches = useMemo(
     () =>
       editableMatches.filter((match) => {
+        if (match.stageKey !== "round_of_32") {
+          return false;
+        }
+
         if (isPlaceholderKnockoutLabel(match.home) || isPlaceholderKnockoutLabel(match.away)) {
           return false;
         }
 
-        if (match.matchNumber !== null) {
-          return match.matchNumber >= 73 && match.matchNumber <= 88;
-        }
-
-        return match.stageKey === "round_of_32";
+        return true;
       }),
     [editableMatches],
   );
