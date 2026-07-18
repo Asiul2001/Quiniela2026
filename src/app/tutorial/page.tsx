@@ -27,16 +27,6 @@ const scoringExamples = [
   },
 ];
 
-const stageMaximums = [
-  ["Grupos", "5 puntos max"],
-  ["Dieciseisavos", "6 puntos max"],
-  ["Octavos", "6 puntos max"],
-  ["Cuartos", "7 puntos max"],
-  ["Semifinal", "9 puntos max"],
-  ["Tercer lugar", "9 puntos max"],
-  ["Final", "11 puntos max"],
-];
-
 export default function TutorialPage() {
   return (
     <main
@@ -115,10 +105,10 @@ export default function TutorialPage() {
 
           <div className="mt-6 grid gap-3 md:grid-cols-3">
             <div className="rounded-2xl bg-white/5 p-4">
-              <div className="text-3xl font-black">Variable</div>
+              <div className="text-3xl font-black">+1</div>
               <p className="mt-1 font-bold">Resultado correcto</p>
               <p className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
-                Vale mas a medida que avanza el torneo.
+                Adivinas si gana local, visitante o empate.
               </p>
             </div>
 
@@ -131,21 +121,12 @@ export default function TutorialPage() {
             </div>
 
             <div className="rounded-2xl bg-white/5 p-4">
-              <div className="text-3xl font-black">Variable</div>
+              <div className="text-3xl font-black">+3</div>
               <p className="mt-1 font-bold">Marcador exacto</p>
               <p className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
-                Tambien sube segun la fase del partido.
+                Adivinas el resultado exacto del partido.
               </p>
             </div>
-          </div>
-
-          <div className="mt-6 grid gap-2 text-sm md:grid-cols-2">
-            {stageMaximums.map(([stage, points]) => (
-              <div key={stage} className="flex justify-between gap-4 rounded-xl bg-white/5 px-4 py-3">
-                <span>{stage}</span>
-                <strong>{points}</strong>
-              </div>
-            ))}
           </div>
         </section>
 
@@ -182,80 +163,6 @@ export default function TutorialPage() {
               </div>
             </div>
           </div>
-        </section>
-
-        <section
-          className="rounded-[2rem] p-6"
-          style={{
-            border: "1px solid var(--color-border-accent)",
-            backgroundColor: "var(--color-bg-card)",
-          }}
-        >
-          <p
-            className="text-xs uppercase tracking-[0.24em]"
-            style={{ color: "var(--color-text-subtle)" }}
-          >
-            Prediccion especial
-          </p>
-
-          <h2 className="mt-2 text-3xl font-black">Que es el Dark Horse?</h2>
-
-          <p className="mt-4 text-sm leading-7" style={{ color: "var(--color-text-subtle)" }}>
-            El Dark Horse es tu apuesta especial por un equipo que crees que puede sorprender en el torneo.
-            No se trata necesariamente de elegir al campeon favorito, sino de encontrar un equipo que pueda
-            llegar mas lejos de lo esperado.
-          </p>
-
-          <p className="mt-3 text-sm leading-7" style={{ color: "var(--color-text-subtle)" }}>
-            Por eso el sistema usa multiplicadores: elegir a un favorito es mas seguro, pero da menos recompensa.
-            Elegir a un equipo mas arriesgado puede dar mas puntos si realmente avanza lejos.
-          </p>
-
-          <div className="mt-6 grid gap-3 md:grid-cols-2">
-            {[
-              ["Favorite", "x1", "Equipos muy fuertes. Menos riesgo, menor recompensa."],
-              ["Strong outsider", "x1.5", "Equipos buenos que pueden sorprender."],
-              ["Dark horse", "x2", "Equipos con potencial de sorpresa real."],
-              ["Big surprise", "x2.5", "Apuestas arriesgadas. Si salen bien, pagan mas."],
-            ].map(([label, multiplier, text]) => (
-              <div key={label} className="rounded-2xl bg-white/5 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <h3 className="font-black">{label}</h3>
-                  <span className="rounded-full bg-white/10 px-3 py-1 text-sm font-black">
-                    {multiplier}
-                  </span>
-                </div>
-                <p className="mt-2 text-sm leading-6" style={{ color: "var(--color-text-subtle)" }}>
-                  {text}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-6 rounded-2xl bg-white/5 p-4">
-            <h3 className="font-black">Puntos base por avance</h3>
-
-            <div className="mt-3 grid gap-2 text-sm md:grid-cols-2">
-              {[
-                ["Dieciseisavos", "1 punto"],
-                ["Octavos", "2 puntos"],
-                ["Cuartos", "3 puntos"],
-                ["Semifinal", "4 puntos"],
-                ["Final", "5 puntos"],
-                ["Campeon", "6 puntos"],
-              ].map(([stage, points]) => (
-                <div key={stage} className="flex justify-between gap-4 rounded-xl bg-white/5 px-3 py-2">
-                  <span style={{ color: "var(--color-text-subtle)" }}>{stage}</span>
-                  <strong>{points}</strong>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <p className="mt-4 text-sm leading-7" style={{ color: "var(--color-text-subtle)" }}>
-            La formula es: <strong style={{ color: "var(--color-text)" }}>puntos base x multiplicador</strong>.
-            Asi, todos tienen una razon para arriesgarse, pero sin que el Dark Horse pese mas que acertar muchos partidos.
-          </p>
         </section>
 
         <section

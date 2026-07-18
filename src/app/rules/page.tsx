@@ -1,19 +1,9 @@
 import Link from "next/link";
 
 const matchRules = [
-  ["Resultado correcto", "Segun la fase"],
+  ["Resultado correcto", "+1 punto"],
   ["Diferencia de goles correcta", "+1 punto"],
-  ["Marcador exacto", "Segun la fase"],
-];
-
-const stagePointRules = [
-  ["Grupos", "2 + 1 + 2 = 5 puntos max"],
-  ["Dieciseisavos", "3 + 1 + 2 = 6 puntos max"],
-  ["Octavos", "3 + 1 + 2 = 6 puntos max"],
-  ["Cuartos", "4 + 1 + 2 = 7 puntos max"],
-  ["Semifinal", "5 + 1 + 3 = 9 puntos max"],
-  ["Tercer lugar", "5 + 1 + 3 = 9 puntos max"],
-  ["Final", "6 + 1 + 4 = 11 puntos max"],
+  ["Marcador exacto", "+3 puntos"],
 ];
 
 const darkHorseStages = [
@@ -99,9 +89,7 @@ export default function RulesPage() {
           {matchRules.map(([label, value]) => (
             <RuleRow key={label} label={label} value={value} />
           ))}
-          {stagePointRules.map(([label, value]) => (
-            <RuleRow key={label} label={label} value={value} />
-          ))}
+          <RuleRow label="Maximo por partido" value="5 puntos" />
         </RuleCard>
 
         <RuleCard title="Golden Boot">
