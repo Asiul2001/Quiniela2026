@@ -441,12 +441,16 @@ function formatStage(stage: string): string {
   switch (stage) {
     case "group":
       return "Fase de grupos";
+    case "round_of_32":
+      return "Dieciseisavos";
     case "round_of_16":
       return "Octavos de final";
     case "quarter_final":
       return "Cuartos de final";
     case "semi_final":
       return "Semifinal";
+    case "third_place":
+      return "Tercer lugar";
     case "final":
       return "Final";
     default:
@@ -919,6 +923,7 @@ const teamOptions: TeamOptions[] = (teams ?? []).map((team) => ({
           match.stage === "round_of_16" ||
           match.stage === "quarter_final" ||
           match.stage === "semi_final" ||
+          match.stage === "third_place" ||
           match.stage === "final",
       )
       .map((match) => ({
@@ -942,6 +947,7 @@ const teamOptions: TeamOptions[] = (teams ?? []).map((team) => ({
           match.stage === "round_of_16" ||
           match.stage === "quarter_final" ||
           match.stage === "semi_final" ||
+          match.stage === "third_place" ||
           match.stage === "final",
       )
       .map((match) => {

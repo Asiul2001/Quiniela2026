@@ -1,14 +1,19 @@
 import Link from "next/link";
 
 const matchRules = [
-  ["Resultado correcto", "+1 punto"],
+  ["Resultado correcto", "Segun la fase"],
   ["Diferencia de goles correcta", "+1 punto"],
-  ["Marcador exacto", "+3 puntos"],
+  ["Marcador exacto", "Segun la fase"],
 ];
 
-const groupRules = [
-  ["Equipo clasificado correctamente a la siguiente fase", "+1 punto"],
-  ["Posición exacta en el grupo", "+2 puntos"],
+const stagePointRules = [
+  ["Grupos", "2 + 1 + 2 = 5 puntos max"],
+  ["Dieciseisavos", "3 + 1 + 2 = 6 puntos max"],
+  ["Octavos", "3 + 1 + 2 = 6 puntos max"],
+  ["Cuartos", "4 + 1 + 2 = 7 puntos max"],
+  ["Semifinal", "5 + 1 + 3 = 9 puntos max"],
+  ["Tercer lugar", "5 + 1 + 3 = 9 puntos max"],
+  ["Final", "6 + 1 + 4 = 11 puntos max"],
 ];
 
 const darkHorseStages = [
@@ -17,14 +22,14 @@ const darkHorseStages = [
   ["Llega a cuartos", "3 puntos base"],
   ["Llega a semifinal", "4 puntos base"],
   ["Llega a la final", "5 puntos base"],
-  ["Campeón", "6 puntos base"],
+  ["Campeon", "6 puntos base"],
 ];
 
 const darkHorseMultipliers = [
-  ["Favorite", "×1"],
-  ["Strong outsider", "×1.5"],
-  ["Dark horse", "×2"],
-  ["Big surprise", "×2.5"],
+  ["Favorite", "x1"],
+  ["Strong outsider", "x1.5"],
+  ["Dark horse", "x2"],
+  ["Big surprise", "x2.5"],
 ];
 
 function RuleCard({ title, children }: { title: string; children: React.ReactNode }) {
@@ -94,23 +99,19 @@ export default function RulesPage() {
           {matchRules.map(([label, value]) => (
             <RuleRow key={label} label={label} value={value} />
           ))}
-          <RuleRow label="Máximo por partido" value="5 puntos" />
-        </RuleCard>
-
-        <RuleCard title="Clasificación de grupos">
-          {groupRules.map(([label, value]) => (
+          {stagePointRules.map(([label, value]) => (
             <RuleRow key={label} label={label} value={value} />
           ))}
         </RuleCard>
 
         <RuleCard title="Golden Boot">
-          <RuleRow label="Debe elegirse antes del inicio del torneo" value="Sí" />
-          <RuleRow label="Predicción correcta" value="+5 puntos" />
+          <RuleRow label="Debe elegirse antes del inicio del torneo" value="Si" />
+          <RuleRow label="Prediccion correcta" value="+5 puntos" />
         </RuleCard>
 
         <RuleCard title="Dark Horse">
-          <RuleRow label="Debe elegirse antes del inicio del torneo" value="Sí" />
-          <RuleRow label="Cálculo" value="Puntos base × multiplicador" />
+          <RuleRow label="Debe elegirse antes del inicio del torneo" value="Si" />
+          <RuleRow label="Calculo" value="Puntos base x multiplicador" />
 
           <h3 className="pt-4 text-lg font-black">Puntos base por avance</h3>
           {darkHorseStages.map(([label, value]) => (

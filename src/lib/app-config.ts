@@ -9,9 +9,11 @@ export const PRIMARY_TOURNAMENT_SLUG = "fifa-world-cup-2026";
 
 export const DEFAULT_STAGE_SCORING_RULES = [
   { stage: "group", outcomePoints: 2, goalDifferencePoints: 1, exactScorePoints: 2 },
+  { stage: "round_of_32", outcomePoints: 3, goalDifferencePoints: 1, exactScorePoints: 2 },
   { stage: "round_of_16", outcomePoints: 3, goalDifferencePoints: 1, exactScorePoints: 2 },
   { stage: "quarter_final", outcomePoints: 4, goalDifferencePoints: 1, exactScorePoints: 2 },
   { stage: "semi_final", outcomePoints: 5, goalDifferencePoints: 1, exactScorePoints: 3 },
+  { stage: "third_place", outcomePoints: 5, goalDifferencePoints: 1, exactScorePoints: 3 },
   { stage: "final", outcomePoints: 6, goalDifferencePoints: 1, exactScorePoints: 4 },
 ] as const;
 

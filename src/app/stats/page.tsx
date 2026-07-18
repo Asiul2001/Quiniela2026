@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { PRIMARY_LEAGUE_SLUG } from "@/lib/app-config";
+import { calculateMatchPoints } from "@/lib/scoring";
 import { calculateDarkHorsePointsByMember } from "@/lib/server-bonus-scoring";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
+import type { Stage } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -218,6 +220,7 @@ export default async function StatsPage() {
   ]);
 
   const totalMatches = matches?.length ?? 0;
+  const matchMap = new Map((matches ?? []).map((match) => [match.id, match]));
 
   const userToName = new Map(
     (profiles ?? []).map((profile) => [profile.id, profile.display_name ?? profile.full_name ?? "Jugador"]),
@@ -257,17 +260,37 @@ export default async function StatsPage() {
     stat.predictions += 1;
 
     const score = getPredictionScore(prediction.prediction_scores);
-    if (!score.hasScoreRow) {
+    const match = matchMap.get(prediction.match_id);
+    const breakdown =
+      match &&
+      prediction.predicted_home_score != null &&
+      prediction.predicted_away_score != null &&
+      match.home_score != null &&
+      match.away_score != null
+        ? calculateMatchPoints({
+            stage: match.stage as Stage,
+            predicted: {
+              home: prediction.predicted_home_score,
+              away: prediction.predicted_away_score,
+            },
+            actual: {
+              home: match.home_score,
+              away: match.away_score,
+            },
+          })
+        : null;
+
+    if (!score.hasScoreRow && !breakdown) {
       continue;
     }
 
     stat.scoredPredictions += 1;
-    stat.totalPoints += score.totalPoints;
+    stat.totalPoints += (breakdown?.points ?? 0) + score.bonusPoints;
 
-    if (score.exactScorePoints > 0) stat.exactScores += 1;
-    if (score.goalDifferencePoints > 0) stat.goalDifferences += 1;
-    if (score.outcomePoints > 0) stat.correctOutcomes += 1;
-    if (score.totalPoints === 0) stat.zeroPointPredictions += 1;
+    if ((breakdown?.exactScorePointsAwarded ?? 0) > 0) stat.exactScores += 1;
+    if ((breakdown?.goalDifferencePointsAwarded ?? 0) > 0) stat.goalDifferences += 1;
+    if ((breakdown?.outcomePointsAwarded ?? 0) > 0) stat.correctOutcomes += 1;
+    if ((breakdown?.points ?? 0) + score.bonusPoints === 0) stat.zeroPointPredictions += 1;
   }
 
   const darkHorsePointsByMember = calculateDarkHorsePointsByMember({

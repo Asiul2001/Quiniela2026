@@ -6,6 +6,8 @@ export type KnockoutGenerationTemplate = {
   matchNumber: number;
   homeSourceMatchNumber: number;
   awaySourceMatchNumber: number;
+  homeSourceOutcome?: "winner" | "loser";
+  awaySourceOutcome?: "winner" | "loser";
   kickoffAt: string;
   venue: string;
 };
@@ -124,6 +126,16 @@ export const KNOCKOUT_GENERATION_TEMPLATES: KnockoutGenerationTemplate[] = [
     venue: "Mercedes-Benz Stadium",
   },
   {
+    stage: "third_place",
+    matchNumber: 103,
+    homeSourceMatchNumber: 101,
+    awaySourceMatchNumber: 102,
+    homeSourceOutcome: "loser",
+    awaySourceOutcome: "loser",
+    kickoffAt: "2026-07-18T19:00:00Z",
+    venue: "Hard Rock Stadium",
+  },
+  {
     stage: "final",
     matchNumber: 104,
     homeSourceMatchNumber: 101,
@@ -132,6 +144,29 @@ export const KNOCKOUT_GENERATION_TEMPLATES: KnockoutGenerationTemplate[] = [
     venue: "MetLife Stadium",
   },
 ];
+
+function getResolvedTeamIdFromStoredMatch(
+  match: {
+    home_team_id: string;
+    away_team_id: string;
+    home_score: number | null;
+    away_score: number | null;
+    home_penalty_score?: number | null;
+    away_penalty_score?: number | null;
+  },
+  outcome: "winner" | "loser" = "winner",
+) {
+  const winner = getAdvancingTeamIdFromStoredMatch(match);
+  if (!winner) {
+    return null;
+  }
+
+  if (outcome === "winner") {
+    return winner;
+  }
+
+  return winner === match.home_team_id ? match.away_team_id : match.home_team_id;
+}
 
 export function getAdvancingTeamIdFromStoredMatch(match: {
   home_team_id: string;
@@ -198,7 +233,7 @@ export async function ensureLaterKnockoutMatches(params: {
     .from("matches")
     .select("id,stage,match_number,kickoff_at,venue,status,updated_at,home_team_id,away_team_id,home_score,away_score,home_penalty_score,away_penalty_score")
     .eq("tournament_id", params.tournamentId)
-    .in("stage", ["round_of_32", "round_of_16", "quarter_final", "semi_final", "final"]);
+    .in("stage", ["round_of_32", "round_of_16", "quarter_final", "semi_final", "third_place", "final"]);
 
   if (knockoutMatchesError) {
     throw knockoutMatchesError;
@@ -222,8 +257,14 @@ export async function ensureLaterKnockoutMatches(params: {
       continue;
     }
 
-    const homeTeamId = getAdvancingTeamIdFromStoredMatch(homeSourceMatch);
-    const awayTeamId = getAdvancingTeamIdFromStoredMatch(awaySourceMatch);
+    const homeTeamId = getResolvedTeamIdFromStoredMatch(
+      homeSourceMatch,
+      template.homeSourceOutcome ?? "winner",
+    );
+    const awayTeamId = getResolvedTeamIdFromStoredMatch(
+      awaySourceMatch,
+      template.awaySourceOutcome ?? "winner",
+    );
 
     if (!homeTeamId || !awayTeamId || homeTeamId === awayTeamId) {
       continue;

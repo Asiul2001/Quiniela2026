@@ -121,10 +121,8 @@ function getTeamCode(name: string) {
 }
 
 function getPredictionTone(match: ResultsMatch, prediction: ResultsMatch["predictions"][number]) {
-  const points = prediction.matchPoints;
-
-  if (points === 5) return "exact";
-  if (points > 0) return "outcome";
+  if (prediction.exactScorePoints > 0) return "exact";
+  if (prediction.matchPoints > 0) return "outcome";
   return "wrong";
 }
 

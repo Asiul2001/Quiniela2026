@@ -1,7 +1,9 @@
 import { PRIMARY_LEAGUE_NAME, PRIMARY_LEAGUE_SLUG } from "@/lib/app-config";
 import { getResolvedMatchStatus, isUpcomingMatchStatus } from "@/lib/match-status";
+import { calculateMatchPoints } from "@/lib/scoring";
 import { calculateDarkHorsePointsByMember } from "@/lib/server-bonus-scoring";
 import { hasSupabaseEnv as hasSupabaseClientEnv, supabase } from "@/lib/supabase";
+import type { Stage } from "@/lib/types";
 
 export type HomePageMatch = {
   id: string;
@@ -43,12 +45,14 @@ export type HomePageData = {
 };
 
 type PredictionScoreRow = {
-  total_points: number;
+  bonus_points?: number | null;
 };
 
 type PredictionRow = {
   member_id: string;
   match_id: string;
+  predicted_home_score: number | null;
+  predicted_away_score: number | null;
   prediction_scores: PredictionScoreRow | PredictionScoreRow[] | null;
 };
 
@@ -142,14 +146,44 @@ function formatKickoffParts(kickoffAt: string) {
   };
 }
 
-function extractTotalPoints(prediction: PredictionRow): number {
+function extractBonusPoints(prediction: PredictionRow): number {
   if (!prediction.prediction_scores) return 0;
 
   if (Array.isArray(prediction.prediction_scores)) {
-    return prediction.prediction_scores[0]?.total_points ?? 0;
+    return prediction.prediction_scores[0]?.bonus_points ?? 0;
   }
 
-  return prediction.prediction_scores.total_points ?? 0;
+  return prediction.prediction_scores.bonus_points ?? 0;
+}
+
+function calculateLiveTotalPoints(prediction: PredictionRow, match?: {
+  stage: string;
+  home_score: number | null;
+  away_score: number | null;
+}) {
+  if (
+    !match ||
+    prediction.predicted_home_score == null ||
+    prediction.predicted_away_score == null ||
+    match.home_score == null ||
+    match.away_score == null
+  ) {
+    return extractBonusPoints(prediction);
+  }
+
+  const breakdown = calculateMatchPoints({
+    stage: match.stage as Stage,
+    predicted: {
+      home: prediction.predicted_home_score,
+      away: prediction.predicted_away_score,
+    },
+    actual: {
+      home: match.home_score,
+      away: match.away_score,
+    },
+  });
+
+  return breakdown.points + extractBonusPoints(prediction);
 }
 
 function getTrendLabel(points: number): string {
@@ -220,7 +254,7 @@ export async function getHomePageData(): Promise<HomePageData> {
         .select("id,display_name,full_name"),
       client
         .from("predictions")
-        .select("member_id,match_id,prediction_scores(total_points)")
+        .select("member_id,match_id,predicted_home_score,predicted_away_score,prediction_scores(bonus_points)")
         .eq("league_id", league.id),
       client
         .from("bonus_predictions")
@@ -231,6 +265,7 @@ export async function getHomePageData(): Promise<HomePageData> {
     ]);
 
     const teamMap = new Map((teams ?? []).map((team) => [team.id, team.name]));
+    const matchMap = new Map((matches ?? []).map((match) => [match.id, match]));
     const profileMap = new Map(
       (profiles ?? []).map((profile) => [
         profile.id,
@@ -308,14 +343,16 @@ export async function getHomePageData(): Promise<HomePageData> {
         );
 
         const totalPoints = memberPredictions.reduce(
-          (sum, prediction) => sum + extractTotalPoints(prediction as PredictionRow),
+          (sum, prediction) =>
+            sum + calculateLiveTotalPoints(prediction as PredictionRow, matchMap.get(prediction.match_id)),
           0,
         ) + (darkHorsePointsByMember.get(member.id)?.points ?? 0);
 
         const recentPoints = memberPredictions
           .filter((prediction) => completedMatchIds.has(prediction.match_id))
           .reduce(
-            (sum, prediction) => sum + extractTotalPoints(prediction as PredictionRow),
+            (sum, prediction) =>
+              sum + calculateLiveTotalPoints(prediction as PredictionRow, matchMap.get(prediction.match_id)),
             0,
           );
 

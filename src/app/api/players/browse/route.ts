@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { PRIMARY_LEAGUE_SLUG } from "@/lib/app-config";
 import { buildLogicalMatchGroups } from "@/lib/match-deduplication";
+import { calculateMatchPoints } from "@/lib/scoring";
 import {
   calculateDarkHorsePointsByMember,
   calculateRoundOf32ProjectionBonusesByMember,
 } from "@/lib/server-bonus-scoring";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
+import type { Stage } from "@/lib/types";
 
 type PredictionScoreShape =
   | {
@@ -282,7 +284,23 @@ export async function GET(request: Request) {
       }
 
       const score = getPredictionScore(prediction.prediction_scores as PredictionScoreShape);
-      const basePoints = Math.max(0, score.totalPoints - score.bonusPoints);
+      const basePoints =
+        prediction.predicted_home_score != null &&
+        prediction.predicted_away_score != null &&
+        match.home_score != null &&
+        match.away_score != null
+          ? calculateMatchPoints({
+              stage: match.stage as Stage,
+              predicted: {
+                home: prediction.predicted_home_score,
+                away: prediction.predicted_away_score,
+              },
+              actual: {
+                home: match.home_score,
+                away: match.away_score,
+              },
+            }).points
+          : 0;
 
       const playerPrediction = {
         matchId: match.id,

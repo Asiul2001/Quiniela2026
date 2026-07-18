@@ -1,3 +1,4 @@
+import { DEFAULT_STAGE_SCORING_RULES as APP_DEFAULT_STAGE_SCORING_RULES } from "@/lib/app-config";
 import type {
   BonusPrediction,
   BonusPredictionType,
@@ -12,15 +13,14 @@ import type {
   TeamTier,
 } from "@/lib/types";
 
-export const DEFAULT_STAGE_SCORING_RULES: Record<Stage, StageScoringRule> = {
-  group: { stage: "group", outcomePoints: 1, goalDifferencePoints: 1, exactScorePoints: 3 },
-  round_of_32: { stage: "round_of_32", outcomePoints: 1, goalDifferencePoints: 1, exactScorePoints: 3 },
-  round_of_16: { stage: "round_of_16", outcomePoints: 1, goalDifferencePoints: 1, exactScorePoints: 3 },
-  quarter_final: { stage: "quarter_final", outcomePoints: 1, goalDifferencePoints: 1, exactScorePoints: 3 },
-  semi_final: { stage: "semi_final", outcomePoints: 1, goalDifferencePoints: 1, exactScorePoints: 3 },
-  third_place: { stage: "third_place", outcomePoints: 1, goalDifferencePoints: 1, exactScorePoints: 3 },
-  final: { stage: "final", outcomePoints: 1, goalDifferencePoints: 1, exactScorePoints: 3 },
-};
+export const DEFAULT_STAGE_SCORING_RULES: Record<Stage, StageScoringRule> =
+  APP_DEFAULT_STAGE_SCORING_RULES.reduce(
+    (rulesByStage, rule) => {
+      rulesByStage[rule.stage] = { ...rule };
+      return rulesByStage;
+    },
+    {} as Record<Stage, StageScoringRule>,
+  );
 
 export const DARK_HORSE_MULTIPLIERS: Record<TeamTier, number> = {
   favorite: 1,

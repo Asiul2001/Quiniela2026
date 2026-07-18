@@ -3,8 +3,10 @@ import { PRIMARY_LEAGUE_SLUG } from "@/lib/app-config";
 import { ensureLaterKnockoutMatches } from "@/lib/knockout-generation";
 import { buildLogicalMatchGroups } from "@/lib/match-deduplication";
 import { normalizeMatchStatus } from "@/lib/match-status";
+import { calculateMatchPoints } from "@/lib/scoring";
 import { calculateDarkHorsePointsByMember } from "@/lib/server-bonus-scoring";
 import { getSupabaseAdmin, hasSupabaseAdminEnv } from "@/lib/supabase-admin";
+import type { Stage } from "@/lib/types";
 
 export type ResultsPrediction = {
   memberId: string;
@@ -202,6 +204,7 @@ export async function getResultsPageData(): Promise<ResultsPageData> {
   const predictions = await fetchAllLeaguePredictions(league.id);
   const predictionScores = await fetchPredictionScoresByPredictionIds(predictions.map((prediction) => prediction.id));
   const { canonicalMatches, canonicalIdByMatchId } = buildLogicalMatchGroups(matches ?? []);
+  const canonicalMatchById = new Map(canonicalMatches.map((match) => [String(match.id).trim(), match]));
 
   const teamMap = new Map((teams ?? []).map((team) => [team.id, team.name.trim()]));
 
@@ -242,27 +245,46 @@ export async function getResultsPageData(): Promise<ResultsPageData> {
   });
 
   for (const prediction of predictions ?? []) {
-    const score = scoreByPrediction.get(prediction.id);
-  const memberId = String(prediction.member_id).trim();
-  const current = globalTotals.get(memberId) ?? 0;
+    const rawMatchId = String(prediction.match_id).trim();
+    const matchId = canonicalIdByMatchId.get(rawMatchId) ?? rawMatchId;
+    const match = canonicalMatchById.get(matchId);
+    const storedScore = scoreByPrediction.get(prediction.id);
+    const breakdown =
+      match &&
+      prediction.predicted_home_score != null &&
+      prediction.predicted_away_score != null &&
+      match.home_score != null &&
+      match.away_score != null
+        ? calculateMatchPoints({
+            stage: match.stage as Stage,
+            predicted: {
+              home: prediction.predicted_home_score,
+              away: prediction.predicted_away_score,
+            },
+            actual: {
+              home: match.home_score,
+              away: match.away_score,
+            },
+          })
+        : null;
+    const memberId = String(prediction.member_id).trim();
+    const current = globalTotals.get(memberId) ?? 0;
+    const bonusPoints = storedScore?.bonusPoints ?? 0;
 
-  globalTotals.set(
-    memberId,
-    current + (score?.totalPoints ?? 0),
-  );
-}
+    globalTotals.set(memberId, current + (breakdown?.points ?? 0) + bonusPoints);
+  }
 
-for (const [memberId, breakdown] of darkHorsePointsByMember.entries()) {
-  globalTotals.set(memberId, (globalTotals.get(memberId) ?? 0) + breakdown.points);
-}
+  for (const [memberId, breakdown] of darkHorsePointsByMember.entries()) {
+    globalTotals.set(memberId, (globalTotals.get(memberId) ?? 0) + breakdown.points);
+  }
 
-const globalRanks = new Map<string, number>();
+  const globalRanks = new Map<string, number>();
 
-Array.from(globalTotals.entries())
-  .sort((a, b) => b[1] - a[1])
-  .forEach(([memberId], index) => {
-    globalRanks.set(memberId, index + 1);
-  });
+  Array.from(globalTotals.entries())
+    .sort((a, b) => b[1] - a[1])
+    .forEach(([memberId], index) => {
+      globalRanks.set(memberId, index + 1);
+    });
 
   for (const prediction of predictions ?? []) {
     const rawMatchId = String(prediction.match_id).trim();
@@ -271,22 +293,41 @@ Array.from(globalTotals.entries())
     const memberId = String(prediction.member_id).trim();
     const userId = memberToUser.get(memberId);
     const memberName = userToName.get(String(userId ?? "").trim()) ?? "Unknown";
-
     const score = scoreByPrediction.get(prediction.id);
+    const match = canonicalMatchById.get(matchId);
+    const breakdown =
+      match &&
+      prediction.predicted_home_score != null &&
+      prediction.predicted_away_score != null &&
+      match.home_score != null &&
+      match.away_score != null
+        ? calculateMatchPoints({
+            stage: match.stage as Stage,
+            predicted: {
+              home: prediction.predicted_home_score,
+              away: prediction.predicted_away_score,
+            },
+            actual: {
+              home: match.home_score,
+              away: match.away_score,
+            },
+          })
+        : null;
+    const bonusPoints = score?.bonusPoints ?? 0;
 
-list.push({
-  memberId,
-  memberName,
-  globalRank: globalRanks.get(memberId) ?? 999,
-  globalPoints: globalTotals.get(memberId) ?? 0,
-  matchPoints: Math.max(0, (score?.totalPoints ?? 0) - (score?.bonusPoints ?? 0)),
-  outcomePoints: score?.outcomePoints ?? 0,
-  goalDifferencePoints: score?.goalDifferencePoints ?? 0,
-  exactScorePoints: score?.exactScorePoints ?? 0,
-  bonusPoints: score?.bonusPoints ?? 0,
-  predictedHome: prediction.predicted_home_score,
-  predictedAway: prediction.predicted_away_score,
-});
+    list.push({
+      memberId,
+      memberName,
+      globalRank: globalRanks.get(memberId) ?? 999,
+      globalPoints: globalTotals.get(memberId) ?? 0,
+      matchPoints: breakdown?.points ?? 0,
+      outcomePoints: breakdown?.outcomePointsAwarded ?? 0,
+      goalDifferencePoints: breakdown?.goalDifferencePointsAwarded ?? 0,
+      exactScorePoints: breakdown?.exactScorePointsAwarded ?? 0,
+      bonusPoints,
+      predictedHome: prediction.predicted_home_score,
+      predictedAway: prediction.predicted_away_score,
+    });
 
     predictionsByMatch.set(matchId, list);
   }

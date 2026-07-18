@@ -55,6 +55,7 @@ const STAGE_OPTIONS: Array<{ value: "all" | Stage; label: string }> = [
   { value: "round_of_16", label: "Octavos" },
   { value: "quarter_final", label: "Cuartos" },
   { value: "semi_final", label: "Semifinales" },
+  { value: "third_place", label: "Tercer lugar" },
   { value: "final", label: "Final" },
 ];
 

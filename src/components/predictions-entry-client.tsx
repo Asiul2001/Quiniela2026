@@ -239,6 +239,8 @@ function formatKnockoutPreviewTitle(stage: Stage) {
       return "Cuartos";
     case "semi_final":
       return "Semifinal";
+    case "third_place":
+      return "Tercer lugar";
     case "final":
       return "Final";
     default:
@@ -1905,6 +1907,7 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                     <option value="round_of_16">Octavos</option>
                     <option value="quarter_final">Cuartos</option>
                     <option value="semi_final">Semifinal</option>
+                    <option value="third_place">Tercer lugar</option>
                     <option value="final">Final</option>
                   </select>
                   <ChevronDown
