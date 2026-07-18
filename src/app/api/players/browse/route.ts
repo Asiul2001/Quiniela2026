@@ -9,6 +9,9 @@ import {
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import type { Stage } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type PredictionScoreShape =
   | {
       total_points?: number | null;
@@ -433,12 +436,19 @@ export async function GET(request: Request) {
       })
       .sort((a, b) => b.points - a.points || b.completion - a.completion || a.name.localeCompare(b.name));
 
-    return NextResponse.json({
-      leagueId: league.id,
-      players: playerSummaries,
-      playerPredictions: Object.fromEntries(predictionsByMember),
-      playerExtraPoints: Object.fromEntries(extraPointsByMember),
-    });
+    return NextResponse.json(
+      {
+        leagueId: league.id,
+        players: playerSummaries,
+        playerPredictions: Object.fromEntries(predictionsByMember),
+        playerExtraPoints: Object.fromEntries(extraPointsByMember),
+      },
+      {
+        headers: {
+          "Cache-Control": "no-store, max-age=0",
+        },
+      },
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to load player browser data.";
     return NextResponse.json({ error: message }, { status: 500 });

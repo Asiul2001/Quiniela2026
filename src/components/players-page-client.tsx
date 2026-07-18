@@ -119,6 +119,7 @@ export function PlayersPageClient() {
           headers: {
             Authorization: `Bearer ${accessToken}`,
           },
+          cache: "no-store",
         });
 
         const payload = await response.json();
