@@ -673,10 +673,10 @@ function FinishOverlay({
   }, [hasOpenedGift, standing.rank, standing.prize?.title]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-6 py-10">
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-3 py-3 sm:px-6 sm:py-10">
       <div className="absolute inset-0 bg-black/55 backdrop-blur-md" onClick={onClose} />
       <div
-        className="relative w-full max-w-4xl overflow-hidden rounded-[2.75rem] px-8 py-10 text-center"
+        className="relative max-h-[calc(100vh-1.5rem)] w-full max-w-4xl overflow-x-hidden overflow-y-auto rounded-[2rem] px-4 py-5 text-center sm:max-h-[calc(100vh-5rem)] sm:rounded-[2.75rem] sm:px-8 sm:py-10"
         style={{
           border: "1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)",
           background:
@@ -738,14 +738,14 @@ function FinishOverlay({
             type="button"
             onClick={onClose}
             aria-label="Cerrar"
-            className="absolute right-0 top-0 rounded-full p-2 transition hover:bg-white/10"
+          className="absolute right-0 top-0 z-10 rounded-full p-2 transition hover:bg-white/10"
             style={{ color: "var(--color-text-subtle)" }}
           >
             <CircleX className="h-6 w-6" />
           </button>
 
           {!hasOpenedGift ? (
-            <div className="relative flex min-h-[32rem] flex-col items-center justify-center px-6 text-center">
+          <div className="relative flex min-h-[24rem] flex-col items-center justify-center px-1 pb-2 pt-8 text-center sm:min-h-[32rem] sm:px-6">
               <button
                 type="button"
                 onClick={() => {
@@ -761,7 +761,7 @@ function FinishOverlay({
                 aria-label="Abrir cofre final"
               >
                 <div
-                  className="absolute inset-x-[-4rem] bottom-[-3rem] top-[-4rem] rounded-[3.5rem] blur-3xl"
+              className="absolute inset-x-[-1.5rem] bottom-[-1rem] top-[-1.5rem] rounded-[2.3rem] blur-2xl sm:inset-x-[-4rem] sm:bottom-[-3rem] sm:top-[-4rem] sm:rounded-[3.5rem] sm:blur-3xl"
                   style={{
                     background:
                       "radial-gradient(circle, color-mix(in srgb, #d6a34a 28%, transparent) 0%, transparent 72%)",
@@ -771,11 +771,11 @@ function FinishOverlay({
                 />
                 <div className="relative flex flex-col items-center">
                   <div
-                    className="absolute bottom-[-1.8rem] left-1/2 h-12 w-[86%] -translate-x-1/2 rounded-[999px] blur-2xl"
+              className="absolute bottom-[-1rem] left-1/2 h-8 w-[80%] -translate-x-1/2 rounded-[999px] blur-xl sm:bottom-[-1.8rem] sm:h-12 sm:w-[86%] sm:blur-2xl"
                     style={{ backgroundColor: "rgba(0,0,0,0.34)" }}
                   />
                   <div
-                    className="relative h-28 w-80 overflow-hidden rounded-t-[999px] border border-b-0 sm:h-32 sm:w-[24rem]"
+                    className="relative h-24 w-[15.5rem] overflow-hidden rounded-t-[999px] border border-b-0 sm:h-32 sm:w-[24rem]"
                     style={{
                       borderColor: "rgba(255,223,156,0.42)",
                       background:
@@ -784,7 +784,7 @@ function FinishOverlay({
                     }}
                   >
                     <div
-                      className="absolute inset-x-4 top-3 h-5 rounded-full blur-md"
+                      className="absolute inset-x-4 top-2 h-4 rounded-full blur-md sm:top-3 sm:h-5"
                       style={{ backgroundColor: "rgba(255,255,255,0.22)" }}
                     />
                     <div
@@ -796,18 +796,18 @@ function FinishOverlay({
                       style={{ backgroundColor: "rgba(94,55,20,0.4)" }}
                     />
                     <div
-                      className="absolute left-1/2 top-[62%] flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border"
+                      className="absolute left-1/2 top-[62%] flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border sm:h-14 sm:w-14"
                       style={{
                         borderColor: "rgba(255,236,185,0.72)",
                         backgroundColor: "rgba(89,48,16,0.28)",
                         boxShadow: "0 6px 18px rgba(0,0,0,0.18)",
                       }}
                     >
-                      <Gift className="h-7 w-7" style={{ color: "rgba(255,248,220,0.95)" }} />
+                      <Gift className="h-5 w-5 sm:h-7 sm:w-7" style={{ color: "rgba(255,248,220,0.95)" }} />
                     </div>
                   </div>
                   <div
-                    className="relative mt-[-0.35rem] h-40 w-80 rounded-b-[2.25rem] border sm:h-44 sm:w-[24rem]"
+                    className="relative mt-[-0.35rem] h-32 w-[15.5rem] rounded-b-[1.8rem] border sm:h-44 sm:w-[24rem] sm:rounded-b-[2.25rem]"
                     style={{
                       borderColor: "rgba(214,163,74,0.44)",
                       background:
@@ -816,7 +816,7 @@ function FinishOverlay({
                     }}
                   >
                     <div
-                      className="absolute inset-x-6 top-4 h-5 rounded-full blur-md"
+                      className="absolute inset-x-4 top-3 h-4 rounded-full blur-md sm:inset-x-6 sm:top-4 sm:h-5"
                       style={{ backgroundColor: "rgba(255,255,255,0.16)" }}
                     />
                     <div
@@ -828,11 +828,11 @@ function FinishOverlay({
                       style={{ backgroundColor: "rgba(214,163,74,0.44)" }}
                     />
                     <div
-                      className="absolute inset-x-0 top-[42%] h-5"
+                      className="absolute inset-x-0 top-[42%] h-4 sm:h-5"
                       style={{ backgroundColor: "rgba(214,163,74,0.58)" }}
                     />
                     <div
-                      className="absolute left-1/2 top-[44%] flex h-16 w-16 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[1.3rem] border"
+                      className="absolute left-1/2 top-[44%] flex h-12 w-12 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[1rem] border sm:h-16 sm:w-16 sm:rounded-[1.3rem]"
                       style={{
                         borderColor: "rgba(255,232,180,0.7)",
                         background:
@@ -841,7 +841,7 @@ function FinishOverlay({
                       }}
                     >
                       <div
-                        className="h-7 w-7 rounded-full border"
+                        className="h-5 w-5 rounded-full border sm:h-7 sm:w-7"
                         style={{ borderColor: "rgba(255,244,210,0.82)" }}
                       />
                     </div>
@@ -849,17 +849,20 @@ function FinishOverlay({
                 </div>
               </button>
 
-              <p className="mt-12 text-xs uppercase tracking-[0.3em]" style={{ color: "var(--color-accent)" }}>
+              <p
+                className="mt-7 text-[11px] uppercase tracking-[0.26em] sm:mt-12 sm:text-xs sm:tracking-[0.3em]"
+                style={{ color: "var(--color-accent)" }}
+              >
                 Cofre final
               </p>
-              <h2 className="mt-4 max-w-3xl text-3xl font-black leading-tight sm:text-5xl">
+              <h2 className="mt-4 max-w-3xl text-2xl font-black leading-tight sm:text-5xl">
                 Abre el baul para descubrir como termino tu quiniela
               </h2>
-              <p className="mt-4 max-w-2xl text-base leading-8" style={{ color: "var(--color-text-subtle)" }}>
+              <p className="mt-4 max-w-2xl text-sm leading-6 sm:text-base sm:leading-8" style={{ color: "var(--color-text-subtle)" }}>
                 Nada se revela todavia. Toca el cofre y deja que tu puesto y tu premio salgan como una sorpresa final.
               </p>
               <div
-                className="mt-6 rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-[0.24em]"
+                className="mt-6 rounded-full px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.18em] sm:text-xs sm:tracking-[0.24em]"
                 style={{
                   border: "1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)",
                   backgroundColor: "rgba(255,255,255,0.06)",
@@ -874,7 +877,7 @@ function FinishOverlay({
           ) : (
             <>
           <div
-            className="relative mt-8 rounded-[2.2rem] border px-5 pb-10 pt-14 sm:px-7"
+            className="relative mt-5 rounded-[1.6rem] border px-3 pb-6 pt-10 sm:mt-8 sm:rounded-[2.2rem] sm:px-7 sm:pb-10 sm:pt-14"
             style={{
               borderColor: "color-mix(in srgb, var(--color-accent) 32%, transparent)",
               background:
@@ -883,29 +886,29 @@ function FinishOverlay({
             }}
           >
             <div
-              className="pointer-events-none absolute left-1/2 top-0 h-20 w-28 -translate-x-1/2 -translate-y-8 rounded-[1.8rem] border"
+              className="pointer-events-none absolute left-1/2 top-0 h-14 w-20 -translate-x-1/2 -translate-y-6 rounded-[1.2rem] border sm:h-20 sm:w-28 sm:-translate-y-8 sm:rounded-[1.8rem]"
               style={{
                 borderColor: "color-mix(in srgb, white 24%, transparent)",
                 background:
                   "linear-gradient(180deg, color-mix(in srgb, var(--color-accent) 24%, rgba(255,255,255,0.12)), rgba(255,255,255,0.08))",
                 boxShadow: "0 20px 40px rgba(0,0,0,0.22)",
-                transform: revealStage >= 1 ? "translate(-50%, -2.6rem) rotate(-12deg)" : "translate(-50%, -2rem)",
+                transform: revealStage >= 1 ? "translate(-50%, -2rem) rotate(-12deg)" : "translate(-50%, -1.4rem)",
                 transition: "transform 700ms cubic-bezier(0.2, 1, 0.3, 1)",
               }}
             />
             <div
-              className="pointer-events-none absolute left-1/2 top-0 h-20 w-28 -translate-x-1/2 -translate-y-8 rounded-[1.8rem] border"
+              className="pointer-events-none absolute left-1/2 top-0 h-14 w-20 -translate-x-1/2 -translate-y-6 rounded-[1.2rem] border sm:h-20 sm:w-28 sm:-translate-y-8 sm:rounded-[1.8rem]"
               style={{
                 borderColor: "color-mix(in srgb, white 24%, transparent)",
                 background:
                   "linear-gradient(180deg, color-mix(in srgb, var(--color-accent-secondary) 24%, rgba(255,255,255,0.12)), rgba(255,255,255,0.08))",
                 boxShadow: "0 20px 40px rgba(0,0,0,0.22)",
-                transform: revealStage >= 1 ? "translate(-50%, -2.6rem) rotate(12deg)" : "translate(-50%, -2rem)",
+                transform: revealStage >= 1 ? "translate(-50%, -2rem) rotate(12deg)" : "translate(-50%, -1.4rem)",
                 transition: "transform 700ms cubic-bezier(0.2, 1, 0.3, 1)",
               }}
             />
             <div
-              className="pointer-events-none absolute bottom-0 left-1/2 h-28 w-56 -translate-x-1/2 translate-y-8 rounded-[2rem] border"
+              className="pointer-events-none absolute bottom-0 left-1/2 h-20 w-40 -translate-x-1/2 translate-y-5 rounded-[1.4rem] border sm:h-28 sm:w-56 sm:translate-y-8 sm:rounded-[2rem]"
               style={{
                 borderColor: "color-mix(in srgb, var(--color-accent) 42%, transparent)",
                 background:
@@ -914,14 +917,14 @@ function FinishOverlay({
               }}
             />
           <div
-            className="relative grid gap-8 lg:grid-cols-[1.08fr_0.92fr] lg:items-center"
+            className="relative grid gap-6 lg:grid-cols-[1.08fr_0.92fr] lg:items-center"
             style={{
               opacity: revealStage >= 1 ? 1 : 0,
               transform: revealStage >= 1 ? "translateY(0)" : "translateY(48px)",
               transition: "opacity 620ms ease, transform 620ms cubic-bezier(0.2, 1, 0.3, 1)",
             }}
           >
-            <div className="space-y-5 text-left">
+            <div className="space-y-4 text-left sm:space-y-5">
               <p
                 className="text-xs uppercase tracking-[0.28em]"
                 style={{
@@ -940,12 +943,12 @@ function FinishOverlay({
                   transition: "opacity 560ms ease, transform 560ms ease",
                 }}
               >
-                <p className="text-lg font-medium leading-8" style={{ color: "var(--color-text-subtle)" }}>
+                <p className="text-sm font-medium leading-6 sm:text-lg sm:leading-8" style={{ color: "var(--color-text-subtle)" }}>
                   La mesa ya cerró, los picks hablaron y tu historia final quedó lista.
                 </p>
               </div>
               <div
-                className="overflow-hidden rounded-[2rem] border px-5 py-5"
+                className="overflow-hidden rounded-[1.4rem] border px-4 py-4 sm:rounded-[2rem] sm:px-5 sm:py-5"
                 style={{
                   borderColor: "color-mix(in srgb, var(--color-accent) 32%, transparent)",
                   backgroundColor: "rgba(255,255,255,0.06)",
@@ -960,7 +963,7 @@ function FinishOverlay({
                   Tu puesto final
                 </p>
                 <h2
-                  className="mt-3 text-4xl font-black sm:text-6xl"
+                  className="mt-2 text-3xl font-black leading-none sm:mt-3 sm:text-6xl"
                   style={{
                     opacity: revealStage >= 2 ? 1 : 0,
                     filter: revealStage >= 2 ? "blur(0px)" : "blur(16px)",
@@ -979,10 +982,10 @@ function FinishOverlay({
                     transition: "opacity 520ms ease, transform 520ms ease",
                   }}
                 >
-                  <p className="text-lg leading-8" style={{ color: "var(--color-accent)" }}>
+                  <p className="text-base leading-6 sm:text-lg sm:leading-8" style={{ color: "var(--color-accent)" }}>
                     {standing.prize.definition}
                   </p>
-                  <p className="mt-2 text-base leading-8" style={{ color: "var(--color-text-subtle)" }}>
+                  <p className="mt-2 text-sm leading-6 sm:text-base sm:leading-8" style={{ color: "var(--color-text-subtle)" }}>
                     {standing.prize.detail}
                   </p>
                 </div>
@@ -990,7 +993,7 @@ function FinishOverlay({
 
               {standing.prize ? (
                 <div
-                  className="rounded-[1.9rem] px-6 py-5"
+                  className="rounded-[1.4rem] px-4 py-4 sm:rounded-[1.9rem] sm:px-6 sm:py-5"
                   style={{
                     border: "1px solid var(--color-border-accent)",
                     backgroundColor: "rgba(255,255,255,0.08)",
@@ -1004,13 +1007,13 @@ function FinishOverlay({
                   <p className="text-xs uppercase tracking-[0.22em]" style={{ color: "var(--color-text-subtle)" }}>
                     Premio especial
                   </p>
-                  <p className="mt-2 text-2xl font-black">{standing.prize.title}</p>
+                  <p className="mt-2 text-xl font-black sm:text-2xl">{standing.prize.title}</p>
                 </div>
               ) : null}
             </div>
 
             <div
-              className="relative flex min-h-[21rem] items-center justify-center"
+              className="relative flex min-h-[14rem] items-center justify-center sm:min-h-[21rem]"
               style={{
                 opacity: revealStage >= 1 ? 1 : 0,
                 transform: revealStage >= 1 ? "translateX(0)" : "translateX(22px)",
@@ -1035,7 +1038,7 @@ function FinishOverlay({
                   }}
                 >
                   <div
-                    className="rounded-[2rem] border p-3"
+                    className="rounded-[1.2rem] border p-2 sm:rounded-[2rem] sm:p-3"
                     style={{
                       borderColor: "color-mix(in srgb, var(--color-accent) 30%, transparent)",
                       backgroundColor: "rgba(255,255,255,0.08)",
@@ -1048,7 +1051,7 @@ function FinishOverlay({
                       aria-hidden="true"
                       width={180}
                       height={180}
-                      className="h-auto w-[120px] sm:w-[150px]"
+                      className="h-auto w-[76px] sm:w-[150px]"
                       priority
                     />
                   </div>
@@ -1061,7 +1064,7 @@ function FinishOverlay({
           <button
             type="button"
             onClick={onClose}
-            className="mt-8 rounded-full px-5 py-3 text-sm font-semibold transition hover:-translate-y-0.5"
+            className="mt-6 rounded-full px-5 py-3 text-sm font-semibold transition hover:-translate-y-0.5 sm:mt-8"
             style={{
               border: "1px solid color-mix(in srgb, var(--color-accent) 45%, transparent)",
               backgroundColor: "color-mix(in srgb, var(--color-accent) 16%, rgba(255,255,255,0.08))",
