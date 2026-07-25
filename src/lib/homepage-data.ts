@@ -1,8 +1,10 @@
+import "server-only";
 import { PRIMARY_LEAGUE_NAME, PRIMARY_LEAGUE_SLUG } from "@/lib/app-config";
 import { getResolvedMatchStatus, isUpcomingMatchStatus } from "@/lib/match-status";
-import { calculateMatchPoints } from "@/lib/scoring";
-import { calculateDarkHorsePointsByMember } from "@/lib/server-bonus-scoring";
-import { hasSupabaseEnv as hasSupabaseClientEnv, supabase } from "@/lib/supabase";
+import { getPlayersBrowseData } from "@/lib/players-browse-data";
+import { buildCanonicalLeagueStandings } from "@/lib/server-standings";
+import { getSupabaseServerClient, hasSupabaseServerEnv } from "@/lib/supabase-server";
+import { getClosingPrize } from "@/lib/tournament-awards";
 import type { Stage } from "@/lib/types";
 
 export type HomePageMatch = {
@@ -23,10 +25,47 @@ export type HomePageMatch = {
 
 export type HomePageLeaderboardEntry = {
   rank: number;
+  userId?: string;
   name: string;
   points: number;
   trend: string;
   completion: number;
+  prize?: {
+    title: string;
+    definition: string;
+    detail: string;
+  };
+};
+
+export type HomePageDarkHorseEntry = {
+  rank: number;
+  playerName: string;
+  teamName: string;
+  progress:
+    | "none"
+    | "round_of_32"
+    | "round_of_16"
+    | "quarter_final"
+    | "semi_final"
+    | "final"
+    | "champion";
+  points: number;
+};
+
+export type HomePageGoldenBootEntry = {
+  rank: number;
+  playerName: string;
+  goldenBootPick: string;
+};
+
+export type HomePageTournamentSummary = {
+  isFinished: boolean;
+  champion: string | null;
+  runnerUp: string | null;
+  thirdPlace: string | null;
+  fourthPlace: string | null;
+  finalScore: string | null;
+  bronzeScore: string | null;
 };
 
 export type HomePageData = {
@@ -35,8 +74,13 @@ export type HomePageData = {
   tournamentName: string;
   featuredMatch: HomePageMatch;
   upcomingMatches: HomePageMatch[];
+  matchFeedTitle: string;
   leaderboard: HomePageLeaderboardEntry[];
+  standings: HomePageLeaderboardEntry[];
+  darkHorseGallery: HomePageDarkHorseEntry[];
+  goldenBootGallery: HomePageGoldenBootEntry[];
   predictionCompletion: number;
+  tournamentSummary: HomePageTournamentSummary;
   stats: {
     players: string;
     teams: string;
@@ -44,16 +88,21 @@ export type HomePageData = {
   };
 };
 
-type PredictionScoreRow = {
-  bonus_points?: number | null;
-};
-
 type PredictionRow = {
+  id: string;
   member_id: string;
   match_id: string;
   predicted_home_score: number | null;
   predicted_away_score: number | null;
-  prediction_scores: PredictionScoreRow | PredictionScoreRow[] | null;
+  updated_at?: string | null;
+  prediction_scores:
+    | {
+        bonus_points?: number | null;
+      }
+    | Array<{
+        bonus_points?: number | null;
+      }>
+    | null;
 };
 
 const fallbackMatches: HomePageMatch[] = [
@@ -95,12 +144,6 @@ const fallbackMatches: HomePageMatch[] = [
   },
 ];
 
-const fallbackLeaderboard: HomePageLeaderboardEntry[] = [
-  { rank: 1, name: "Luisa", points: 42, trend: "+8", completion: 94 },
-  { rank: 2, name: "Carlos", points: 37, trend: "+5", completion: 86 },
-  { rank: 3, name: "Ana", points: 35, trend: "+3", completion: 82 },
-];
-
 const fallbackData: HomePageData = {
   leagueName: `${PRIMARY_LEAGUE_NAME} Quiniela`,
   leagueDescription:
@@ -108,18 +151,27 @@ const fallbackData: HomePageData = {
   tournamentName: "FIFA World Cup 2026",
   featuredMatch: fallbackMatches[0],
   upcomingMatches: fallbackMatches,
-  leaderboard: fallbackLeaderboard,
+  matchFeedTitle: "Upcoming matches",
+  leaderboard: [],
+  standings: [],
+  darkHorseGallery: [],
+  goldenBootGallery: [],
   predictionCompletion: 0,
+  tournamentSummary: {
+    isFinished: false,
+    champion: null,
+    runnerUp: null,
+    thirdPlace: null,
+    fourthPlace: null,
+    finalScore: null,
+    bronzeScore: null,
+  },
   stats: {
     players: "0",
     teams: "48",
     matches: "72",
   },
 };
-
-function hasSupabaseEnv() {
-  return hasSupabaseClientEnv && supabase !== null;
-}
 
 function formatStage(stage: string): string {
   return stage
@@ -146,57 +198,49 @@ function formatKickoffParts(kickoffAt: string) {
   };
 }
 
-function extractBonusPoints(prediction: PredictionRow): number {
-  if (!prediction.prediction_scores) return 0;
-
-  if (Array.isArray(prediction.prediction_scores)) {
-    return prediction.prediction_scores[0]?.bonus_points ?? 0;
-  }
-
-  return prediction.prediction_scores.bonus_points ?? 0;
-}
-
-function calculateLiveTotalPoints(prediction: PredictionRow, match?: {
-  stage: string;
-  home_score: number | null;
-  away_score: number | null;
-}) {
-  if (
-    !match ||
-    prediction.predicted_home_score == null ||
-    prediction.predicted_away_score == null ||
-    match.home_score == null ||
-    match.away_score == null
-  ) {
-    return extractBonusPoints(prediction);
-  }
-
-  const breakdown = calculateMatchPoints({
-    stage: match.stage as Stage,
-    predicted: {
-      home: prediction.predicted_home_score,
-      away: prediction.predicted_away_score,
-    },
-    actual: {
-      home: match.home_score,
-      away: match.away_score,
-    },
-  });
-
-  return breakdown.points + extractBonusPoints(prediction);
-}
-
 function getTrendLabel(points: number): string {
   return points > 0 ? `+${points}` : "+0";
 }
 
+function formatScoreLabel(match?: {
+  home_score: number | null;
+  away_score: number | null;
+}) {
+  if (!match || match.home_score == null || match.away_score == null) {
+    return null;
+  }
+
+  return `${match.home_score}-${match.away_score}`;
+}
+
+function getWinningTeamName(params: {
+  homeTeamName: string | null;
+  awayTeamName: string | null;
+  homeScore: number | null | undefined;
+  awayScore: number | null | undefined;
+}) {
+  if (params.homeScore == null || params.awayScore == null) {
+    return null;
+  }
+
+  if (params.homeScore > params.awayScore) {
+    return params.homeTeamName;
+  }
+
+  if (params.awayScore > params.homeScore) {
+    return params.awayTeamName;
+  }
+
+  return null;
+}
+
 export async function getHomePageData(): Promise<HomePageData> {
-  if (!hasSupabaseEnv() || !supabase) {
+  if (!hasSupabaseServerEnv) {
     return fallbackData;
   }
 
   try {
-    const client = supabase;
+    const client = getSupabaseServerClient();
     const { data: league, error: leagueError } = await client
       .from("leagues")
       .select("id,name,description")
@@ -230,6 +274,7 @@ export async function getHomePageData(): Promise<HomePageData> {
       { data: profiles },
       { data: predictions },
       { data: darkHorsePredictions },
+      { data: goldenBootPredictions },
     ] = await Promise.all([
       client
         .from("tournaments")
@@ -242,7 +287,7 @@ export async function getHomePageData(): Promise<HomePageData> {
         .eq("tournament_id", leagueTournament.tournament_id),
       client
         .from("matches")
-        .select("id,stage,home_team_id,away_team_id,venue,kickoff_at,status,home_score,away_score")
+        .select("id,stage,round_number,match_number,home_team_id,away_team_id,venue,kickoff_at,status,updated_at,home_score,away_score,home_penalty_score,away_penalty_score")
         .eq("tournament_id", leagueTournament.tournament_id)
         .order("kickoff_at", { ascending: true }),
       client
@@ -254,7 +299,7 @@ export async function getHomePageData(): Promise<HomePageData> {
         .select("id,display_name,full_name"),
       client
         .from("predictions")
-        .select("member_id,match_id,predicted_home_score,predicted_away_score,prediction_scores(bonus_points)")
+        .select("id,member_id,match_id,predicted_home_score,predicted_away_score,updated_at,prediction_scores(bonus_points)")
         .eq("league_id", league.id),
       client
         .from("bonus_predictions")
@@ -262,20 +307,45 @@ export async function getHomePageData(): Promise<HomePageData> {
         .eq("league_id", league.id)
         .eq("tournament_id", leagueTournament.tournament_id)
         .eq("type", "dark_horse"),
+      client
+        .from("bonus_predictions")
+        .select("member_id,payload")
+        .eq("league_id", league.id)
+        .eq("tournament_id", leagueTournament.tournament_id)
+        .eq("type", "golden_boot"),
     ]);
 
     const teamMap = new Map((teams ?? []).map((team) => [team.id, team.name]));
-    const matchMap = new Map((matches ?? []).map((match) => [match.id, match]));
-    const profileMap = new Map(
-      (profiles ?? []).map((profile) => [
-        profile.id,
-        profile.display_name ?? profile.full_name ?? "Player",
-      ]),
-    );
-    const darkHorsePointsByMember = calculateDarkHorsePointsByMember({
+    const profileMap = new Map((profiles ?? []).map((profile) => [profile.id, profile.display_name ?? profile.full_name ?? "Player"]));
+    const standingsSource = buildCanonicalLeagueStandings({
+      members: members ?? [],
+      profiles: profiles ?? [],
       teams: teams ?? [],
-      matches: matches ?? [],
-      darkHorsePredictions: darkHorsePredictions ?? [],
+      matches: (matches ?? []).map((match) => ({
+        id: match.id,
+        stage: match.stage as Stage,
+        round_number: match.round_number ?? null,
+        match_number: match.match_number ?? null,
+        home_team_id: match.home_team_id,
+        away_team_id: match.away_team_id,
+        kickoff_at: match.kickoff_at,
+        venue: match.venue ?? null,
+        status: match.status ?? null,
+        updated_at: match.updated_at ?? null,
+        home_score: match.home_score,
+        away_score: match.away_score,
+        home_penalty_score: match.home_penalty_score ?? null,
+        away_penalty_score: match.away_penalty_score ?? null,
+      })),
+      predictions: (predictions ?? []) as PredictionRow[],
+      darkHorsePredictions: (darkHorsePredictions ?? []) as Array<{
+        member_id: string;
+        payload: Record<string, unknown> | null;
+      }>,
+      goldenBootPredictions: (goldenBootPredictions ?? []) as Array<{
+        member_id: string;
+        payload: Record<string, unknown> | null;
+      }>,
     });
 
     const now = Date.now();
@@ -325,77 +395,161 @@ export async function getHomePageData(): Promise<HomePageData> {
         } satisfies HomePageMatch;
       });
 
+    const completedMatches = (matches ?? [])
+      .map((match) => ({
+        ...match,
+        resolvedStatus: getResolvedMatchStatus({
+          status: match.status,
+          kickoffAt: match.kickoff_at,
+          homeScore: match.home_score,
+          awayScore: match.away_score,
+          now,
+        }),
+      }))
+      .filter((match) => match.home_score !== null && match.away_score !== null)
+      .sort(
+        (a, b) =>
+          new Date(b.kickoff_at).getTime() - new Date(a.kickoff_at).getTime(),
+      );
+
     const completedMatchIds = new Set(
-      (matches ?? [])
-        .filter((match) => match.home_score !== null && match.away_score !== null)
-        .sort(
-          (a, b) =>
-            new Date(b.kickoff_at).getTime() - new Date(a.kickoff_at).getTime(),
-        )
+      completedMatches
         .slice(0, 3)
         .map((match) => match.id),
     );
 
-    const leaderboard = (members ?? [])
-      .map((member) => {
-        const memberPredictions = (predictions ?? []).filter(
-          (prediction) => prediction.member_id === member.id,
-        );
-
-        const totalPoints = memberPredictions.reduce(
-          (sum, prediction) =>
-            sum + calculateLiveTotalPoints(prediction as PredictionRow, matchMap.get(prediction.match_id)),
-          0,
-        ) + (darkHorsePointsByMember.get(member.id)?.points ?? 0);
-
+    const recentPointsByMember = new Map(
+      standingsSource.playerSummaries.map((player) => {
+        const memberPredictions = standingsSource.predictionsByMember.get(player.id) ?? [];
         const recentPoints = memberPredictions
-          .filter((prediction) => completedMatchIds.has(prediction.match_id))
-          .reduce(
-            (sum, prediction) =>
-              sum + calculateLiveTotalPoints(prediction as PredictionRow, matchMap.get(prediction.match_id)),
-            0,
-          );
+          .filter((prediction) => completedMatchIds.has(String((prediction as { matchId?: string }).matchId ?? "")))
+          .reduce((sum, prediction) => sum + (Number((prediction as { points?: number }).points) || 0), 0);
 
-        const totalMatches = Math.max((matches ?? []).length, 1);
-        const completion = Math.min(
-          100,
-          Math.round((memberPredictions.length / totalMatches) * 100),
-        );
+        return [player.id, recentPoints] as const;
+      }),
+    );
 
-        return {
-          name: profileMap.get(member.user_id) ?? "Player",
-          points: totalPoints,
-          trend: getTrendLabel(recentPoints),
-          completion,
-        };
-      })
-      .sort(
-        (a, b) =>
-          b.points - a.points ||
-          b.completion - a.completion ||
-          a.name.localeCompare(b.name),
-      )
-      .slice(0, 5)
-      .map((entry, index) => ({
-        rank: index + 1,
-        ...entry,
-      }));
+    const sharedPlayersPayload = await getPlayersBrowseData();
+    const standings = sharedPlayersPayload.players.map((player) => ({
+      rank: player.rank,
+      userId: player.userId,
+      name: player.name,
+      points: player.points,
+      trend: getTrendLabel(recentPointsByMember.get(player.id) ?? 0),
+      completion: player.completion,
+      prize: player.specialPrize ?? getClosingPrize(player.rank, sharedPlayersPayload.players.length),
+    }));
 
-    const predictionCompletion = leaderboard.length
+    const leaderboard = standings.slice(0, 5);
+
+    const predictionCompletion = sharedPlayersPayload.players.length
       ? Math.round(
-          leaderboard.reduce((sum, entry) => sum + entry.completion, 0) /
-            leaderboard.length,
+          sharedPlayersPayload.players.reduce((sum, entry) => sum + entry.completion, 0) /
+            sharedPlayersPayload.players.length,
         )
       : 0;
+
+    const darkHorseGallery = sharedPlayersPayload.darkHorseGallery.map((entry) => ({
+      rank: entry.playerRank,
+      playerName: entry.playerName,
+      teamName: entry.teamName,
+      progress: entry.progress as HomePageDarkHorseEntry["progress"],
+      points: entry.points,
+    }));
+
+    const goldenBootGallery = sharedPlayersPayload.goldenBootGallery.map((entry) => ({
+      rank: entry.playerRank,
+      playerName: entry.playerName,
+      goldenBootPick: entry.goldenBootPick,
+    }));
+
+    const finalMatch = (matches ?? []).find((match) => match.stage === "final");
+    const bronzeMatch = (matches ?? []).find((match) => match.stage === "third_place");
+    const finalHome = finalMatch ? teamMap.get(finalMatch.home_team_id) ?? "Home team" : null;
+    const finalAway = finalMatch ? teamMap.get(finalMatch.away_team_id) ?? "Away team" : null;
+    const bronzeHome = bronzeMatch ? teamMap.get(bronzeMatch.home_team_id) ?? "Home team" : null;
+    const bronzeAway = bronzeMatch ? teamMap.get(bronzeMatch.away_team_id) ?? "Away team" : null;
+    const tournamentFinished =
+      finalMatch?.home_score != null && finalMatch?.away_score != null;
+    const championTeam = getWinningTeamName({
+      homeTeamName: finalHome,
+      awayTeamName: finalAway,
+      homeScore: finalMatch?.home_score,
+      awayScore: finalMatch?.away_score,
+    });
+    const thirdPlaceTeam = getWinningTeamName({
+      homeTeamName: bronzeHome,
+      awayTeamName: bronzeAway,
+      homeScore: bronzeMatch?.home_score,
+      awayScore: bronzeMatch?.away_score,
+    });
+    const fourthPlaceTeam =
+      thirdPlaceTeam === bronzeHome
+        ? bronzeAway
+        : thirdPlaceTeam === bronzeAway
+          ? bronzeHome
+          : null;
+
+    const matchFeed =
+      upcomingMatches.length > 0
+        ? upcomingMatches
+        : completedMatches.slice(0, 5).map((match, index) => {
+            const kickoff = formatKickoffParts(match.kickoff_at);
+            const matchPredictions = (predictions ?? []).filter(
+              (prediction) => prediction.match_id === match.id,
+            );
+            const memberCount = Math.max((members ?? []).length, 1);
+
+            return {
+              id: match.id,
+              home: teamMap.get(match.home_team_id) ?? "Home team",
+              away: teamMap.get(match.away_team_id) ?? "Away team",
+              date: kickoff.date,
+              time: kickoff.time,
+              stage: formatStage(match.stage),
+              venue:
+                match.venue ??
+                ["Monterrey", "Guadalajara", "Toronto", "Houston", "Los Angeles"][index] ??
+                "TBD",
+              poolActivity: Math.round((matchPredictions.length / memberCount) * 100),
+              kickoffAt: match.kickoff_at,
+              status: match.resolvedStatus,
+              homeScore: match.home_score,
+              awayScore: match.away_score,
+              matchMinute: null,
+            } satisfies HomePageMatch;
+          });
 
     return {
       leagueName: league.name,
       leagueDescription: league.description ?? fallbackData.leagueDescription,
       tournamentName: tournament?.name ?? fallbackData.tournamentName,
-      featuredMatch: upcomingMatches[0] ?? fallbackData.featuredMatch,
-      upcomingMatches,
-      leaderboard: leaderboard.length ? leaderboard : fallbackData.leaderboard,
+      featuredMatch: matchFeed[0] ?? fallbackData.featuredMatch,
+      upcomingMatches: matchFeed,
+      matchFeedTitle: upcomingMatches.length > 0 ? "Proximos juegos" : "Ultimos resultados",
+      leaderboard,
+      standings,
+      darkHorseGallery,
+      goldenBootGallery,
       predictionCompletion,
+      tournamentSummary: {
+        isFinished: tournamentFinished,
+        champion: tournamentFinished ? championTeam : null,
+        runnerUp:
+          tournamentFinished && championTeam
+            ? championTeam === finalHome
+              ? finalAway
+              : finalHome
+            : null,
+        thirdPlace: thirdPlaceTeam,
+        fourthPlace: fourthPlaceTeam,
+        finalScore: tournamentFinished && finalHome && finalAway
+          ? `${finalHome} ${formatScoreLabel(finalMatch)} ${finalAway}`
+          : null,
+        bronzeScore: bronzeMatch?.home_score != null && bronzeMatch?.away_score != null && bronzeHome && bronzeAway
+          ? `${bronzeHome} ${formatScoreLabel(bronzeMatch)} ${bronzeAway}`
+          : null,
+      },
       stats: {
         players: String((members ?? []).length),
         teams: String((teams ?? []).length || 48),

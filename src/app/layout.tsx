@@ -6,6 +6,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Quiniela Platform",
   description: "Multi-league football prediction platform",
+  icons: {
+    icon: [{ url: "/favicon-mascots.png", type: "image/png", sizes: "256x256" }],
+    shortcut: ["/favicon-mascots.png"],
+    apple: ["/favicon-mascots.png"],
+  },
 };
 
 type RootLayoutProps = {

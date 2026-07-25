@@ -4,7 +4,7 @@ import { ensureLaterKnockoutMatches } from "@/lib/knockout-generation";
 import { buildLogicalMatchGroups } from "@/lib/match-deduplication";
 import { normalizeMatchStatus } from "@/lib/match-status";
 import { calculateMatchPoints } from "@/lib/scoring";
-import { calculateDarkHorsePointsByMember } from "@/lib/server-bonus-scoring";
+import { buildCanonicalLeagueStandings } from "@/lib/server-standings";
 import { getSupabaseAdmin, hasSupabaseAdminEnv } from "@/lib/supabase-admin";
 import type { Stage } from "@/lib/types";
 
@@ -167,6 +167,7 @@ export async function getResultsPageData(): Promise<ResultsPageData> {
     { data: members },
     { data: profiles },
     { data: darkHorsePredictions },
+    { data: goldenBootPredictions },
   ] = await Promise.all([
     supabase
       .from("tournaments")
@@ -199,6 +200,12 @@ export async function getResultsPageData(): Promise<ResultsPageData> {
       .eq("league_id", league.id)
       .eq("tournament_id", leagueTournament.tournament_id)
       .eq("type", "dark_horse"),
+    supabase
+      .from("bonus_predictions")
+      .select("member_id,payload")
+      .eq("league_id", league.id)
+      .eq("tournament_id", leagueTournament.tournament_id)
+      .eq("type", "golden_boot"),
   ]);
 
   const predictions = await fetchAllLeaguePredictions(league.id);
@@ -237,46 +244,48 @@ export async function getResultsPageData(): Promise<ResultsPageData> {
   ]),
 );
 
-  const globalTotals = new Map<string, number>();
-  const darkHorsePointsByMember = calculateDarkHorsePointsByMember({
-    teams: teams ?? [],
-    matches: canonicalMatches,
-    darkHorsePredictions: darkHorsePredictions ?? [],
+  const standingsSource = buildCanonicalLeagueStandings({
+    members: (members ?? []).map((member) => ({ id: String(member.id).trim(), user_id: member.user_id })),
+    profiles: (profiles ?? []).map((profile) => ({ id: String(profile.id).trim(), display_name: profile.display_name })),
+    teams: (teams ?? []).map((team) => ({ id: team.id, name: team.name })),
+    matches: (matches ?? []).map((match) => ({
+      id: String(match.id).trim(),
+      stage: match.stage,
+      round_number: null,
+      match_number: match.match_number,
+      home_team_id: match.home_team_id,
+      away_team_id: match.away_team_id,
+      kickoff_at: match.kickoff_at,
+      venue: match.venue,
+      status: match.status,
+      updated_at: match.updated_at,
+      home_score: match.home_score,
+      away_score: match.away_score,
+      home_penalty_score: match.home_penalty_score,
+      away_penalty_score: match.away_penalty_score,
+    })),
+    predictions: (predictions ?? []).map((prediction) => ({
+      id: prediction.id,
+      member_id: String(prediction.member_id).trim(),
+      match_id: String(prediction.match_id).trim(),
+      predicted_home_score: prediction.predicted_home_score,
+      predicted_away_score: prediction.predicted_away_score,
+      prediction_scores: scoreByPrediction.has(prediction.id)
+        ? { bonus_points: scoreByPrediction.get(prediction.id)?.bonusPoints ?? 0 }
+        : null,
+    })),
+    darkHorsePredictions: (darkHorsePredictions ?? []) as Array<{
+      member_id: string;
+      payload: Record<string, unknown> | null;
+    }>,
+    goldenBootPredictions: (goldenBootPredictions ?? []) as Array<{
+      member_id: string;
+      payload: Record<string, unknown> | null;
+    }>,
   });
-
-  for (const prediction of predictions ?? []) {
-    const rawMatchId = String(prediction.match_id).trim();
-    const matchId = canonicalIdByMatchId.get(rawMatchId) ?? rawMatchId;
-    const match = canonicalMatchById.get(matchId);
-    const storedScore = scoreByPrediction.get(prediction.id);
-    const breakdown =
-      match &&
-      prediction.predicted_home_score != null &&
-      prediction.predicted_away_score != null &&
-      match.home_score != null &&
-      match.away_score != null
-        ? calculateMatchPoints({
-            stage: match.stage as Stage,
-            predicted: {
-              home: prediction.predicted_home_score,
-              away: prediction.predicted_away_score,
-            },
-            actual: {
-              home: match.home_score,
-              away: match.away_score,
-            },
-          })
-        : null;
-    const memberId = String(prediction.member_id).trim();
-    const current = globalTotals.get(memberId) ?? 0;
-    const bonusPoints = storedScore?.bonusPoints ?? 0;
-
-    globalTotals.set(memberId, current + (breakdown?.points ?? 0) + bonusPoints);
-  }
-
-  for (const [memberId, breakdown] of darkHorsePointsByMember.entries()) {
-    globalTotals.set(memberId, (globalTotals.get(memberId) ?? 0) + breakdown.points);
-  }
+  const globalTotals = new Map(
+    standingsSource.playerSummaries.map((player) => [player.id, player.points]),
+  );
 
   const globalRanks = new Map<string, number>();
 

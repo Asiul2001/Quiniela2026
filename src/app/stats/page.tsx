@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { PRIMARY_LEAGUE_SLUG } from "@/lib/app-config";
 import { calculateMatchPoints } from "@/lib/scoring";
-import { calculateDarkHorsePointsByMember } from "@/lib/server-bonus-scoring";
+import { buildCanonicalLeagueStandings } from "@/lib/server-standings";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import type { Stage } from "@/lib/types";
 
@@ -201,6 +201,7 @@ export default async function StatsPage() {
     { data: matches },
     { data: teams },
     { data: darkHorsePredictions },
+    { data: goldenBootPredictions },
     predictions,
   ] = await Promise.all([
     admin.from("league_members").select("id,user_id").eq("league_id", league.id),
@@ -216,11 +217,54 @@ export default async function StatsPage() {
       .eq("league_id", league.id)
       .eq("tournament_id", leagueTournament.tournament_id)
       .eq("type", "dark_horse"),
+    admin
+      .from("bonus_predictions")
+      .select("member_id,payload")
+      .eq("league_id", league.id)
+      .eq("tournament_id", leagueTournament.tournament_id)
+      .eq("type", "golden_boot"),
     fetchAllLeaguePredictions(admin, league.id),
   ]);
 
   const totalMatches = matches?.length ?? 0;
   const matchMap = new Map((matches ?? []).map((match) => [match.id, match]));
+  const standingsSource = buildCanonicalLeagueStandings({
+    members: members ?? [],
+    profiles: profiles ?? [],
+    teams: teams ?? [],
+    matches: (matches ?? []).map((match) => ({
+      id: match.id,
+      stage: match.stage as Stage,
+      round_number: null,
+      match_number: match.match_number ?? null,
+      home_team_id: match.home_team_id,
+      away_team_id: match.away_team_id,
+      kickoff_at: null,
+      venue: null,
+      status: null,
+      updated_at: null,
+      home_score: match.home_score,
+      away_score: match.away_score,
+      home_penalty_score: match.home_penalty_score ?? null,
+      away_penalty_score: match.away_penalty_score ?? null,
+    })),
+    predictions: predictions.map((prediction) => ({
+      id: prediction.id,
+      member_id: prediction.member_id,
+      match_id: prediction.match_id,
+      predicted_home_score: prediction.predicted_home_score,
+      predicted_away_score: prediction.predicted_away_score,
+      prediction_scores: prediction.prediction_scores,
+    })),
+    darkHorsePredictions: (darkHorsePredictions ?? []) as Array<{
+      member_id: string;
+      payload: Record<string, unknown> | null;
+    }>,
+    goldenBootPredictions: (goldenBootPredictions ?? []) as Array<{
+      member_id: string;
+      payload: Record<string, unknown> | null;
+    }>,
+  });
 
   const userToName = new Map(
     (profiles ?? []).map((profile) => [profile.id, profile.display_name ?? profile.full_name ?? "Jugador"]),
@@ -285,7 +329,7 @@ export default async function StatsPage() {
     }
 
     stat.scoredPredictions += 1;
-    stat.totalPoints += (breakdown?.points ?? 0) + score.bonusPoints;
+    stat.totalPoints += breakdown?.points ?? 0;
 
     if ((breakdown?.exactScorePointsAwarded ?? 0) > 0) stat.exactScores += 1;
     if ((breakdown?.goalDifferencePointsAwarded ?? 0) > 0) stat.goalDifferences += 1;
@@ -293,24 +337,10 @@ export default async function StatsPage() {
     if ((breakdown?.points ?? 0) + score.bonusPoints === 0) stat.zeroPointPredictions += 1;
   }
 
-  const darkHorsePointsByMember = calculateDarkHorsePointsByMember({
-    teams: teams ?? [],
-    matches: (matches ?? []) as Array<{
-      stage: any;
-      home_team_id: string;
-      away_team_id: string;
-      home_score?: number | null;
-      away_score?: number | null;
-      home_penalty_score?: number | null;
-      away_penalty_score?: number | null;
-    }>,
-    darkHorsePredictions: darkHorsePredictions ?? [],
-  });
-
-  for (const [memberId, breakdown] of darkHorsePointsByMember.entries()) {
-    const stat = statsByMember.get(memberId);
+  for (const player of standingsSource.playerSummaries) {
+    const stat = statsByMember.get(player.id);
     if (!stat) continue;
-    stat.totalPoints += breakdown.points;
+    stat.totalPoints += player.breakdown.extraPoints;
   }
 
   const stats = Array.from(statsByMember.values())

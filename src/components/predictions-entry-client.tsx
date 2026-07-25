@@ -176,6 +176,21 @@ type Toast = {
   type: "success" | "error";
 };
 
+function isExpectedRemoteSyncError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+
+  return (
+    message.includes("missing an access token") ||
+    message.includes("bootstrap") ||
+    message.includes("401 unauthorized") ||
+    message.includes("fetch failed")
+  );
+}
+
 type EnrichedMatch = PredictionsPageData["matches"][number] & {
   liveCanEdit: boolean;
   liveCanCreate: boolean;
@@ -560,10 +575,13 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
           ...remoteSavedIds,
         });
       } catch (error) {
-        console.error("Unable to load remote predictions", error);
         if (!active) return;
 
         const message = error instanceof Error ? error.message : "Remote prediction sync could not be initialized.";
+
+        if (!isExpectedRemoteSyncError(error)) {
+          console.error("Unable to load remote predictions", error);
+        }
 
         setMemberId(null);
         setRemoteSyncAvailable(false);
@@ -1996,8 +2014,8 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                       </div>
                     ) : (
                       <>
-                        {groupedMatches.map((group) => (
-                          <div key={`$Resultado proyectado-${group.subtitle}`} className="space-y-4">
+                        {groupedMatches.map((group, groupIndex) => (
+                          <div key={`projection-group-${groupIndex}-${group.subtitle}`} className="space-y-4">
                             <div className="flex items-center justify-between">
                               <div>
                                 <p
@@ -2358,8 +2376,8 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                       Completa tus pronosticos de dieciseisavos para ver como se formarian los octavos.
                     </div>
                   ) : (
-                    groupedRoundOf16Preview.map((group) => (
-                      <div key={`round16-${group.subtitle}`} className="space-y-4">
+                    groupedRoundOf16Preview.map((group, groupIndex) => (
+                      <div key={`round16-${groupIndex}-${group.subtitle}`} className="space-y-4">
                         <div className="flex items-center justify-between">
                           <div>
                             <p
@@ -2417,8 +2435,8 @@ export function PredictionsEntryClient({ data }: { data: PredictionsPageData }) 
                       Completa tus pronosticos de octavos para ver como se formarian los cuartos.
                     </div>
                   ) : (
-                    groupedQuarterFinalPreview.map((group) => (
-                      <div key={`quarter-${group.subtitle}`} className="space-y-4">
+                    groupedQuarterFinalPreview.map((group, groupIndex) => (
+                      <div key={`quarter-${groupIndex}-${group.subtitle}`} className="space-y-4">
                         <div className="flex items-center justify-between">
                           <div>
                             <p

@@ -6,19 +6,26 @@ import { ThemeMascotOverlay } from "@/components/theme-mascot-overlay";
 import { useAuthUser } from "@/hooks/use-auth-user";
 import { PRIMARY_LEAGUE_NAME } from "@/lib/app-config";
 import { getCountryFlagUrl } from "@/lib/country-flags";
-import { supabase } from "@/lib/supabase";
+import type { PlayersBrowsePayload } from "@/lib/players-browse-data";
 
 type PlayerSummary = {
   id: string;
   userId: string;
+  rank?: number;
   name: string;
   points: number;
   completion: number;
   predictionsCount: number;
+  specialPrize?: {
+    title: string;
+    definition: string;
+    detail: string;
+  };
   breakdown?: {
     matchPoints: number;
     extraPoints: number;
     darkHorsePoints: number;
+    goldenBootPoints: number;
     projectionPoints: number;
   };
 };
@@ -45,8 +52,24 @@ type PlayerExtraPoint = {
   detail: string;
   secondaryDetail?: string;
   points: number;
-  category: "dark_horse" | "projection_bonus";
+  category: "dark_horse" | "projection_bonus" | "golden_boot";
   kickoffAt?: string | null;
+};
+
+type DarkHorseGalleryEntry = {
+  playerId: string;
+  playerName: string;
+  playerRank: number;
+  teamName: string;
+  progress: string;
+  points: number;
+};
+
+type GoldenBootGalleryEntry = {
+  playerId: string;
+  playerName: string;
+  playerRank: number;
+  goldenBootPick: string;
 };
 
 function formatLocalMatchTime(kickoffAt: string) {
@@ -84,49 +107,82 @@ function formatStageLabel(stage: string) {
   return labels[stage] ?? stage;
 }
 
-export function PlayersPageClient() {
-  const { user } = useAuthUser();
-  const [leagueId, setLeagueId] = useState<string | null>(null);
-  const [players, setPlayers] = useState<PlayerSummary[]>([]);
-  const [playerPredictions, setPlayerPredictions] = useState<Record<string, PlayerPrediction[]>>({});
-  const [playerExtraPoints, setPlayerExtraPoints] = useState<Record<string, PlayerExtraPoint[]>>({});
-  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+function formatProgressLabel(progress: string) {
+  const labels: Record<string, string> = {
+    none: "no avanzo",
+    round_of_32: "llego a dieciseisavos",
+    round_of_16: "llego a octavos",
+    quarter_final: "llego a cuartos",
+    semi_final: "llego a semifinal",
+    final: "llego a la final",
+    champion: "fue campeon",
+  };
+
+  return labels[progress] ?? progress;
+}
+
+export function PlayersPageClient({ initialData }: { initialData: PlayersBrowsePayload | null }) {
+  const { user, loading: authLoading } = useAuthUser();
+  const [leagueId, setLeagueId] = useState<string | null>(initialData?.leagueId ?? null);
+  const [players, setPlayers] = useState<PlayerSummary[]>(initialData?.players ?? []);
+  const [playerPredictions, setPlayerPredictions] = useState<Record<string, PlayerPrediction[]>>(
+    (initialData?.playerPredictions as Record<string, PlayerPrediction[]>) ?? {},
+  );
+  const [playerExtraPoints, setPlayerExtraPoints] = useState<Record<string, PlayerExtraPoint[]>>(
+    (initialData?.playerExtraPoints as Record<string, PlayerExtraPoint[]>) ?? {},
+  );
+  const [darkHorseGallery, setDarkHorseGallery] = useState<DarkHorseGalleryEntry[]>(initialData?.darkHorseGallery ?? []);
+  const [goldenBootGallery, setGoldenBootGallery] = useState<GoldenBootGalleryEntry[]>(initialData?.goldenBootGallery ?? []);
+  const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(initialData?.players[0]?.id ?? null);
   const [extraPointsOpen, setExtraPointsOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initialData);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (authLoading) {
+      return;
+    }
+
     if (!user) {
+      setLoading(false);
+      setError("Inicia sesion para ver a las personas de la liga.");
       return;
     }
 
     let active = true;
 
+    async function fetchPlayersPayload() {
+      let lastError: Error | null = null;
+
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          const response = await fetch("/api/players/browse", {
+            cache: "no-store",
+          });
+
+          const payload = (await response.json()) as PlayersBrowsePayload | { error?: string };
+
+          if (!response.ok) {
+            throw new Error(("error" in payload ? payload.error : undefined) ?? "Unable to load league players.");
+          }
+
+          return payload as PlayersBrowsePayload;
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error("Unable to load league players.");
+
+          if (attempt < 2) {
+            await new Promise((resolve) => window.setTimeout(resolve, 400 * (attempt + 1)));
+            continue;
+          }
+        }
+      }
+
+      throw lastError ?? new Error("Unable to load league players.");
+    }
+
     async function loadPlayerData() {
       try {
-        if (!supabase) {
-          throw new Error("Supabase is not configured for this environment.");
-        }
-
-        const { data } = await supabase.auth.getSession();
-        const accessToken = data.session?.access_token;
-
-        if (!accessToken) {
-          throw new Error("Unable to resolve your session token.");
-        }
-
-        const response = await fetch("/api/players/browse", {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-          cache: "no-store",
-        });
-
-        const payload = await response.json();
-
-        if (!response.ok) {
-          throw new Error(payload?.error ?? "Unable to load league players.");
-        }
+        const payload = await fetchPlayersPayload();
 
         if (!active) {
           return;
@@ -134,13 +190,18 @@ export function PlayersPageClient() {
 
         setLeagueId(payload.leagueId);
         setPlayers(payload.players ?? []);
-        setPlayerPredictions(payload.playerPredictions ?? {});
-        setPlayerExtraPoints(payload.playerExtraPoints ?? {});
+        setPlayerPredictions((payload.playerPredictions as Record<string, PlayerPrediction[]>) ?? {});
+        setPlayerExtraPoints((payload.playerExtraPoints as Record<string, PlayerExtraPoint[]>) ?? {});
+        setDarkHorseGallery(payload.darkHorseGallery ?? []);
+        setGoldenBootGallery(payload.goldenBootGallery ?? []);
         setSelectedPlayerId((current) => current ?? payload.players?.[0]?.id ?? null);
         setExtraPointsOpen(false);
         setError(null);
       } catch (err) {
-        console.error(err);
+        if (!active) {
+          return;
+        }
+
         setError(err instanceof Error ? err.message : "Unable to load player predictions.");
       } finally {
         if (active) {
@@ -149,12 +210,14 @@ export function PlayersPageClient() {
       }
     }
 
-    void loadPlayerData();
+    if (!initialData) {
+      void loadPlayerData();
+    }
 
     return () => {
       active = false;
     };
-  }, [user]);
+  }, [authLoading, initialData, user]);
 
   const selectedPlayer = useMemo(
     () => players.find((player) => player.id === selectedPlayerId) ?? players[0] ?? null,
@@ -270,6 +333,124 @@ export function PlayersPageClient() {
                   boxShadow: "0 28px 70px rgba(0, 0, 0, 0.24)",
                 }}
               >
+                <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p
+                      className="text-sm uppercase tracking-[0.24em]"
+                      style={{ color: "var(--color-text-subtle)" }}
+                    >
+                      Dark horse de todos
+                    </p>
+                    <p className="mt-2 text-2xl font-black">A quien apoyo cada quien</p>
+                  </div>
+                  <p className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
+                    Picks, avance real y puntos del bonus.
+                  </p>
+                </div>
+
+                {darkHorseGallery.length === 0 ? (
+                  <p className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
+                    Todavia no hay dark horses registrados.
+                  </p>
+                ) : (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {darkHorseGallery.map((entry) => (
+                      <div
+                        key={entry.playerId}
+                        className="rounded-[1.5rem] px-4 py-4"
+                        style={{ backgroundColor: "rgba(255,255,255,0.05)" }}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p
+                              className="text-sm uppercase tracking-[0.18em]"
+                              style={{ color: "var(--color-accent)" }}
+                            >
+                              #{entry.playerRank}
+                            </p>
+                            <p className="mt-1 text-lg font-black">{entry.playerName}</p>
+                            <p className="mt-2 text-sm" style={{ color: "var(--color-text-subtle)" }}>
+                              Dark horse: {entry.teamName}
+                            </p>
+                            <p className="mt-1 text-sm" style={{ color: "var(--color-text-subtle)" }}>
+                              {formatProgressLabel(entry.progress)}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-2xl font-black">{entry.points}</p>
+                            <p
+                              className="text-[11px] uppercase tracking-[0.18em]"
+                              style={{ color: "var(--color-text-subtle)" }}
+                            >
+                              pts
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div
+                className="rounded-[2rem] p-6"
+                style={{
+                  border: "1px solid var(--color-border-accent)",
+                  backgroundColor: "var(--color-bg-card)",
+                  boxShadow: "0 28px 70px rgba(0, 0, 0, 0.24)",
+                }}
+              >
+                <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p
+                      className="text-sm uppercase tracking-[0.24em]"
+                      style={{ color: "var(--color-text-subtle)" }}
+                    >
+                      Golden boot de todos
+                    </p>
+                    <p className="mt-2 text-2xl font-black">A quien puso cada quien</p>
+                  </div>
+                  <p className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
+                    Prediccion libre del maximo goleador.
+                  </p>
+                </div>
+
+                {goldenBootGallery.length === 0 ? (
+                  <p className="text-sm" style={{ color: "var(--color-text-subtle)" }}>
+                    Todavia no hay picks de Golden Boot registrados.
+                  </p>
+                ) : (
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {goldenBootGallery.map((entry) => (
+                      <div
+                        key={entry.playerId}
+                        className="rounded-[1.5rem] px-4 py-4"
+                        style={{ backgroundColor: "rgba(255,255,255,0.05)" }}
+                      >
+                        <p
+                          className="text-sm uppercase tracking-[0.18em]"
+                          style={{ color: "var(--color-accent)" }}
+                        >
+                          #{entry.playerRank}
+                        </p>
+                        <p className="mt-1 text-lg font-black">{entry.playerName}</p>
+                        <p className="mt-2 text-sm" style={{ color: "var(--color-text-subtle)" }}>
+                          Golden Boot: {entry.goldenBootPick}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div
+                className="rounded-[2rem] p-6"
+                style={{
+                  border: "1px solid var(--color-border-accent)",
+                  backgroundColor: "var(--color-bg-card)",
+                  boxShadow: "0 28px 70px rgba(0, 0, 0, 0.24)",
+                }}
+              >
                 <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p
@@ -332,6 +513,14 @@ export function PlayersPageClient() {
                               >
                                 Predicciones guardadas: {player.predictionsCount}
                               </p>
+                              {player.specialPrize ? (
+                                <p
+                                  className="mt-2 text-xs uppercase tracking-[0.18em]"
+                                  style={{ color: "var(--color-accent)" }}
+                                >
+                                  Premio: {player.specialPrize.title}
+                                </p>
+                              ) : null}
                             </div>
                           </div>
 
@@ -380,6 +569,16 @@ export function PlayersPageClient() {
                     <p className="mt-2 break-words text-3xl font-black">
                       {selectedPlayer?.name ?? "Sin jugador seleccionado"}
                     </p>
+                    {selectedPlayer?.specialPrize ? (
+                      <div className="mt-2 space-y-1">
+                        <p className="text-sm" style={{ color: "var(--color-accent)" }}>
+                          {selectedPlayer.specialPrize.title}
+                        </p>
+                        <p className="text-xs leading-6" style={{ color: "var(--color-text-subtle)" }}>
+                          {selectedPlayer.specialPrize.definition}
+                        </p>
+                      </div>
+                    ) : null}
                   </div>
                   <div
                     className="rounded-2xl px-4 py-3 text-sm sm:max-w-xs"
@@ -395,11 +594,12 @@ export function PlayersPageClient() {
                 </div>
 
                 {selectedPlayer?.breakdown ? (
-                  <div className="mb-6 grid gap-3 md:grid-cols-4">
+                  <div className="mb-6 grid gap-3 md:grid-cols-5">
                     {[
                       ["Puntos de partidos", selectedPlayer.breakdown.matchPoints],
                       ["Puntos extra", selectedPlayer.breakdown.extraPoints],
                       ["Dark Horse", selectedPlayer.breakdown.darkHorsePoints],
+                      ["Golden Boot", selectedPlayer.breakdown.goldenBootPoints],
                       ["Cruces y avances", selectedPlayer.breakdown.projectionPoints],
                     ].map(([label, value]) => (
                       <div
@@ -416,6 +616,30 @@ export function PlayersPageClient() {
                         <p className="mt-2 text-2xl font-black">{value}</p>
                       </div>
                     ))}
+                  </div>
+                ) : null}
+
+                {selectedPlayer?.specialPrize ? (
+                  <div
+                    className="mb-6 rounded-[1.75rem] p-4"
+                    style={{
+                      border: "1px solid var(--color-border-accent)",
+                      backgroundColor: "rgba(255, 255, 255, 0.04)",
+                    }}
+                  >
+                    <p
+                      className="text-xs uppercase tracking-[0.18em]"
+                      style={{ color: "var(--color-text-subtle)" }}
+                    >
+                      Premio final
+                    </p>
+                    <p className="mt-2 text-xl font-black">{selectedPlayer.specialPrize.title}</p>
+                    <p className="mt-2 text-sm leading-6" style={{ color: "var(--color-accent)" }}>
+                      {selectedPlayer.specialPrize.definition}
+                    </p>
+                    <p className="mt-2 text-sm leading-6" style={{ color: "var(--color-text-subtle)" }}>
+                      {selectedPlayer.specialPrize.detail}
+                    </p>
                   </div>
                 ) : null}
 

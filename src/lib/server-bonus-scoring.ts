@@ -1,6 +1,9 @@
 import { calculateDarkHorsePoints } from "@/lib/scoring";
 import type { Stage, TeamTier } from "@/lib/types";
 
+const OFFICIAL_GOLDEN_BOOT_WINNER = "Kylian Mbappe";
+const GOLDEN_BOOT_POINTS = 5;
+
 type TeamRow = {
   id: string;
   name: string;
@@ -23,6 +26,11 @@ type DarkHorsePredictionRow = {
   payload: Record<string, unknown> | null;
 };
 
+type GoldenBootPredictionRow = {
+  member_id: string;
+  payload: Record<string, unknown> | null;
+};
+
 export type DarkHorseBreakdown = {
   teamId: string;
   teamName: string;
@@ -35,6 +43,12 @@ export type DarkHorseBreakdown = {
     | "semi_final"
     | "final"
     | "champion";
+  points: number;
+};
+
+export type GoldenBootBreakdown = {
+  playerName: string;
+  officialWinner: string;
   points: number;
 };
 
@@ -506,6 +520,50 @@ function getDarkHorseProgress(teamId: string, matches: MatchRow[]) {
   return "none" as const;
 }
 
+function normalizePlayerName(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function getNameTokens(value: string) {
+  return normalizePlayerName(value)
+    .split(" ")
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+function isGoldenBootWinnerMatch(predictedName: string, officialWinner: string) {
+  const normalizedPrediction = normalizePlayerName(predictedName);
+  const normalizedWinner = normalizePlayerName(officialWinner);
+
+  if (!normalizedPrediction || !normalizedWinner) {
+    return false;
+  }
+
+  if (normalizedPrediction === normalizedWinner) {
+    return true;
+  }
+
+  const winnerTokens = getNameTokens(officialWinner);
+  const predictionTokens = getNameTokens(predictedName);
+  const winnerLastName = winnerTokens.at(-1) ?? "";
+  const predictionLastName = predictionTokens.at(-1) ?? "";
+
+  if (normalizedPrediction === winnerLastName || predictionLastName === winnerLastName) {
+    return true;
+  }
+
+  if (normalizedWinner.includes(normalizedPrediction) || normalizedPrediction.includes(normalizedWinner)) {
+    return true;
+  }
+
+  return false;
+}
+
 export function calculateDarkHorsePointsByMember(params: {
   teams: TeamRow[];
   matches: MatchRow[];
@@ -553,6 +611,41 @@ export function calculateDarkHorsePointsByMember(params: {
       teamName: team.name,
       teamTier: team.tier,
       progress,
+      points,
+    });
+  }
+
+  return breakdownByMember;
+}
+
+export function calculateGoldenBootPointsByMember(params: {
+  goldenBootPredictions: GoldenBootPredictionRow[];
+  officialWinner?: string;
+  pointsAwarded?: number;
+}) {
+  const winner = params.officialWinner ?? OFFICIAL_GOLDEN_BOOT_WINNER;
+  const awardedPoints = params.pointsAwarded ?? GOLDEN_BOOT_POINTS;
+  const breakdownByMember = new Map<string, GoldenBootBreakdown>();
+
+  for (const prediction of params.goldenBootPredictions) {
+    const payload = prediction.payload ?? {};
+    const playerName =
+      payload &&
+      typeof payload === "object" &&
+      "playerName" in payload &&
+      typeof payload.playerName === "string"
+        ? payload.playerName.trim()
+        : "";
+
+    if (!playerName) {
+      continue;
+    }
+
+    const points = isGoldenBootWinnerMatch(playerName, winner) ? awardedPoints : 0;
+
+    breakdownByMember.set(prediction.member_id, {
+      playerName,
+      officialWinner: winner,
       points,
     });
   }
