@@ -673,10 +673,10 @@ function FinishOverlay({
   }, [hasOpenedGift, standing.rank, standing.prize?.title]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-3 py-3 sm:px-6 sm:py-10">
+    <div className="fixed inset-0 z-50 overflow-y-auto px-3 py-3 sm:flex sm:items-center sm:justify-center sm:px-6 sm:py-10">
       <div className="absolute inset-0 bg-black/55 backdrop-blur-md" onClick={onClose} />
       <div
-        className="relative max-h-[calc(100vh-1.5rem)] w-full max-w-4xl overflow-x-hidden overflow-y-auto rounded-[2rem] px-4 py-5 text-center sm:max-h-[calc(100vh-5rem)] sm:rounded-[2.75rem] sm:px-8 sm:py-10"
+        className="relative my-auto w-full max-w-4xl overflow-visible rounded-[2rem] px-4 py-5 text-center sm:max-h-[calc(100vh-5rem)] sm:overflow-x-hidden sm:overflow-y-auto sm:rounded-[2.75rem] sm:px-8 sm:py-10"
         style={{
           border: "1px solid color-mix(in srgb, var(--color-accent) 35%, transparent)",
           background:
